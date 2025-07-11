@@ -9,7 +9,7 @@ class RadioProvider extends ChangeNotifier {
   final RadioRepository _repository = RadioRepositoryImpl();
 
   List<RadioStation> _stations = [];
-  List<RadioStation> _favoriteStations = [];
+  List<String> _favoriteStationIds = [];
   bool _isLoading = false;
   String? _currentPlayingId;
   String? _error;
@@ -18,7 +18,9 @@ class RadioProvider extends ChangeNotifier {
   final TextEditingController _searchController = TextEditingController();
 
   List<RadioStation> get stations => _stations;
-  List<RadioStation> get favoriteStations => _favoriteStations;
+  List<RadioStation> get favoriteStations {
+    return _stations.where((station) => _favoriteStationIds.contains(station.id)).toList();
+  }
   bool get isLoading => _isLoading;
   String? get currentPlayingId => _currentPlayingId;
   String? get error => _error;
@@ -29,7 +31,7 @@ class RadioProvider extends ChangeNotifier {
   List<RadioStation> get filteredStations {
     List<RadioStation> sourceList = _currentTab == TabType.stations
         ? _stations
-        : _favoriteStations;
+        : favoriteStations;
 
     if (_searchQuery.isEmpty) {
       return sourceList;
@@ -43,8 +45,13 @@ class RadioProvider extends ChangeNotifier {
   }
 
   RadioProvider() {
-    loadStations();
+    _initializeApp();
     _searchController.addListener(_onSearchChanged);
+  }
+
+  Future<void> _initializeApp() async {
+    await loadStations();
+    await _loadFavorites();
   }
 
   void _onSearchChanged() {
@@ -64,18 +71,35 @@ class RadioProvider extends ChangeNotifier {
   }
 
   bool isFavorite(String stationId) {
-    return _favoriteStations.any((station) => station.id == stationId);
+    return _favoriteStationIds.contains(stationId);
   }
 
-  void toggleFavorite(String stationId) {
-    final station = _stations.firstWhere((s) => s.id == stationId);
-
+  Future<void> toggleFavorite(String stationId) async {
     if (isFavorite(stationId)) {
-      _favoriteStations.removeWhere((s) => s.id == stationId);
+      _favoriteStationIds.remove(stationId);
     } else {
-      _favoriteStations.add(station);
+      _favoriteStationIds.add(stationId);
     }
+
+    await _saveFavorites();
     notifyListeners();
+  }
+
+  Future<void> _loadFavorites() async {
+    try {
+      _favoriteStationIds = await _repository.loadFavoriteStations();
+      notifyListeners();
+    } catch (e) {
+      print('Ошибка загрузки избранного: $e');
+    }
+  }
+
+  Future<void> _saveFavorites() async {
+    try {
+      await _repository.saveFavoriteStations(_favoriteStationIds);
+    } catch (e) {
+      print('Ошибка сохранения избранного: $e');
+    }
   }
 
   Future<void> loadStations() async {

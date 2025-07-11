@@ -1,9 +1,12 @@
 import '../models/radio_station.dart';
+import '../storage.dart';
 
 abstract class RadioRepository {
   Future<List<RadioStation>> getRadioStations();
   Future<void> playStation(String stationId);
   Future<void> stopStation();
+  Future<void> saveFavoriteStations(List<String> favoriteIds);
+  Future<List<String>> loadFavoriteStations();
 }
 
 class RadioRepositoryImpl implements RadioRepository {
@@ -70,5 +73,15 @@ class RadioRepositoryImpl implements RadioRepository {
     // Логика остановки воспроизведения
     await Future.delayed(Duration(milliseconds: 200));
     print('Stopped playing');
+  }
+
+  @override
+  Future<void> saveFavoriteStations(List<String> favoriteIds) async {
+    await Storage.saveFavoriteStations(favoriteIds);
+  }
+
+  @override
+  Future<List<String>> loadFavoriteStations() async {
+    return await Storage.loadFavoriteStations();
   }
 }
