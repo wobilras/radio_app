@@ -14,7 +14,10 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => RadioProvider()),
+        ChangeNotifierProvider(
+          create: (_) => RadioProvider(),
+          lazy: false,
+        ),
       ],
       child: MaterialApp(
         title: 'Radio App',

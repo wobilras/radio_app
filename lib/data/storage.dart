@@ -1,7 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
-class Storage {
+class StorageService {
   static const String _favoritesKey = 'favorite_stations';
 
   static Future<void> saveFavoriteStations(List<String> favoriteIds) async {

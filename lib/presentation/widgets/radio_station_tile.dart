@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../data/models/radio_station.dart';
 
@@ -47,30 +48,37 @@ class RadioStationTile extends StatelessWidget {
                     Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.vertical(
+                        borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(16.0),
                         ),
                         color: Colors.grey[300],
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.vertical(
+                        borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(16.0),
                         ),
-                        child: Image.network(
-                          station.imageUrl,
+                        child: CachedNetworkImage(
+                          imageUrl: station.imageUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              color: Colors.blue[100],
-                              child: Center(
-                                child: Icon(
-                                  Icons.radio,
-                                  size: 40,
-                                  color: Colors.blue[700],
-                                ),
+                          placeholder: (context, url) => Container(
+                            color: Colors.blue[100],
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.blue[700],
                               ),
-                            );
-                          },
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: Colors.blue[100],
+                            child: Center(
+                              child: Icon(
+                                Icons.radio,
+                                size: 40,
+                                color: Colors.blue[700],
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -131,6 +139,26 @@ class RadioStationTile extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (station.bitrate != null && station.bitrate! > 0)
+                      Positioned(
+                        bottom: 8,
+                        left: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.7),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            station.qualityRating,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -154,7 +182,7 @@ class RadioStationTile extends StatelessWidget {
                       ),
                       SizedBox(height: 4),
                       Text(
-                        station.frequency,
+                        station.description,
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
