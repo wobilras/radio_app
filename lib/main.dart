@@ -4,7 +4,8 @@ import 'package:radio_app/presentation/screens/main_screen.dart';
 import 'package:radio_app/providers/radio_provider.dart';
 
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(MyApp());
 }
 
