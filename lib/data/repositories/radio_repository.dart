@@ -1,232 +1,177 @@
 import '../models/radio_station.dart';
 import '../radio_browser.dart';
 import '../radio_player.dart';
-import '../storage.dart';
 
 abstract class RadioRepository {
-  Future<Result<List<RadioStation>>> getPopularStations({int limit = 50, int offset = 0});
-  Future<Result<List<RadioStation>>> getTopVotedStations({int limit = 50, int offset = 0});
-  Future<Result<List<RadioStation>>> searchStations({
-    String? name,
-    String? country,
-    String? tag,
-    int limit = 30,
-  });
-  Future<Result<List<RadioStation>>> getStationsByCountry(String countryCode);
-  Future<Result<List<RadioStation>>> getStationsByTag(String tag);
-  Future<Result<List<RadioStation>>> getNewStations({int limit = 50});
-  Future<Result<void>> playStation(RadioStation station);
-  Future<Result<void>> stopStation();
-  Future<Result<void>> pauseStation();
-  Future<Result<void>> resumeStation();
-  Future<Result<void>> saveFavoriteStations(List<String> favoriteIds);
-  Future<Result<List<String>>> loadFavoriteStations();
-  Future<Result<bool>> validateStreamUrl(String url);
-  Future<Result<void>> incrementStationClick(String stationId);
+  Future<List<RadioStation>> getRadioStations();
+  Future<List<RadioStation>> searchStations(String query);
+  Future<List<RadioStation>> getStationsByCountry(String countryCode);
+  Future<void> playStation(RadioStation station);
+  Future<void> stopStation();
+  Stream<String?> get currentStationStream;
+  String? get currentStationId;
 }
 
 class RadioRepositoryImpl implements RadioRepository {
-  static const int _maxRetries = 3;
-  static const Duration _retryDelay = Duration(seconds: 2);
+  final RadioBrowserService _browserService = RadioBrowserService();
+  final AudioPlayerService _audioService = AudioPlayerService();
 
   @override
-  Future<Result<List<RadioStation>>> getPopularStations({
-    int limit = 50,
-    int offset = 0,
-  }) async {
-    return await _executeWithRetry(() async {
-      return await RadioBrowserService.getTopClickStations(
-        limit: limit,
-        offset: offset,
+  Stream<String?> get currentStationStream => _audioService.currentStationStream;
+
+  @override
+  String? get currentStationId => _audioService.currentStationId;
+
+  Future<void> initialize() async {
+    await _audioService.initialize();
+  }
+
+  @override
+  Future<List<RadioStation>> getRadioStations() async {
+    try {
+      print('Загрузка популярных радиостанций...');
+
+      final stations = await _browserService.getPopularStations(limit: 100);
+
+      final validStations = stations.where((station) {
+        return station.url.isNotEmpty &&
+            station.name.isNotEmpty &&
+            (station.url.startsWith('http://') || station.url.startsWith('https://'));
+      }).toList();
+
+      print('Загружено ${validStations.length} станций');
+      return validStations;
+    } catch (e) {
+      print('Ошибка загрузки станций: $e');
+      return _getFallbackStations();
+    }
+  }
+
+  @override
+  Future<List<RadioStation>> searchStations(String query) async {
+    try {
+      print('Поиск станций: $query');
+
+      if (query.trim().isEmpty) {
+        return await getRadioStations();
+      }
+
+      final stations = await _browserService.searchStations(
+        name: query,
+        limit: 50,
       );
-    });
+
+      final validStations = stations.where((station) {
+        return station.url.isNotEmpty &&
+            station.name.isNotEmpty &&
+            (station.url.startsWith('http://') || station.url.startsWith('https://'));
+      }).toList();
+
+      print('Найдено ${validStations.length} станций по запросу: $query');
+      return validStations;
+    } catch (e) {
+      print('Ошибка поиска станций: $e');
+      return [];
+    }
   }
 
   @override
-  Future<Result<List<RadioStation>>> getTopVotedStations({
-    int limit = 50,
-    int offset = 0,
-  }) async {
-    return await _executeWithRetry(() async {
-      return await RadioBrowserService.getTopVotedStations(
-        limit: limit,
-        offset: offset,
+  Future<List<RadioStation>> getStationsByCountry(String countryCode) async {
+    try {
+      print('Загрузка станций для страны: $countryCode');
+
+      final stations = await _browserService.getStationsByCountry(countryCode, limit: 50);
+
+      final validStations = stations.where((station) {
+        return station.url.isNotEmpty &&
+            station.name.isNotEmpty &&
+            (station.url.startsWith('http://') || station.url.startsWith('https://'));
+      }).toList();
+
+      print('Загружено ${validStations.length} станций для страны $countryCode');
+      return validStations;
+    } catch (e) {
+      print('Ошибка загрузки станций по стране: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<void> playStation(RadioStation station) async {
+    try {
+      await _browserService.registerStationClick(station.stationuuid);
+
+      await _audioService.playStation(
+        station.stationuuid,
+        station.name,
+        station.url,
       );
-    });
-  }
 
-  @override
-  Future<Result<List<RadioStation>>> searchStations({
-    String? name,
-    String? country,
-    String? tag,
-    int limit = 30,
-  }) async {
-    try {
-      if (name?.trim().isEmpty == true &&
-          country?.trim().isEmpty == true &&
-          tag?.trim().isEmpty == true) {
-        return await getPopularStations(limit: limit);
-      }
-
-      return await _executeWithRetry(() async {
-        return await RadioBrowserService.searchStations(
-          name: name?.trim(),
-          country: country?.trim(),
-          tag: tag?.trim(),
-          limit: limit,
-        );
-      });
+      print('Станция ${station.name} начала воспроизводиться');
     } catch (e) {
-      return Result.failure(AppError.network('Search failed: $e'));
+      print('Ошибка воспроизведения станции: $e');
+      rethrow;
     }
   }
 
   @override
-  Future<Result<List<RadioStation>>> getStationsByCountry(String countryCode) async {
-    return await _executeWithRetry(() async {
-      return await RadioBrowserService.getStationsByCountry(countryCode);
-    });
-  }
-
-  @override
-  Future<Result<List<RadioStation>>> getStationsByTag(String tag) async {
-    return await _executeWithRetry(() async {
-      return await RadioBrowserService.getStationsByTag(tag);
-    });
-  }
-
-  @override
-  Future<Result<List<RadioStation>>> getNewStations({int limit = 50}) async {
-    return await _executeWithRetry(() async {
-      return await RadioBrowserService.getNewStations(limit: limit);
-    });
-  }
-
-  @override
-  Future<Result<void>> playStation(RadioStation station) async {
+  Future<void> stopStation() async {
     try {
-      final validationResult = await validateStreamUrl(station.streamUrl);
-      if (validationResult.isFailure) {
-        return Result.failure(AppError.validation('Invalid stream URL'));
-      }
-
-      if (validationResult.data == false) {
-        return Result.failure(AppError.validation('Stream is not accessible'));
-      }
-
-      final playResult = await RadioPlayerService.play(station);
-
-      if (playResult.isSuccess) {
-        incrementStationClick(station.id).then((result) {
-          if (result.isFailure) {
-            print('Failed to increment click count: ${result.error}');
-          }
-        });
-      }
-
-      return playResult;
+      await _audioService.stop();
+      print('Воспроизведение остановлено');
     } catch (e) {
-      return Result.failure(AppError.player('Failed to play station: $e'));
+      print('Ошибка остановки воспроизведения: $e');
+      rethrow;
     }
   }
 
-  @override
-  Future<Result<void>> stopStation() async {
-    try {
-      return await RadioPlayerService.stop();
-    } catch (e) {
-      return Result.failure(AppError.player('Failed to stop station: $e'));
-    }
+  /// Резервные данные на случай проблем с API
+  List<RadioStation> _getFallbackStations() {
+    return [
+      RadioStation(
+        stationuuid: 'fallback-1',
+        name: 'Радио Маяк',
+        url: 'https://icecast-radiomayak.cdnvideo.ru/radiomayak',
+        favicon: 'https://via.placeholder.com/150/FF6B6B/FFFFFF?text=МАЯК',
+        country: 'Russia',
+        countrycode: 'RU',
+        language: 'russian',
+        tags: 'news,music',
+        votes: 100,
+        bitrate: 128,
+        codec: 'MP3',
+      ),
+      RadioStation(
+        stationuuid: 'fallback-2',
+        name: 'Европа Плюс',
+        url: 'https://ep256.hostingradio.ru:8052/europaplus256.mp3',
+        favicon: 'https://via.placeholder.com/150/4ECDC4/FFFFFF?text=ЕВРОПА+',
+        country: 'Russia',
+        countrycode: 'RU',
+        language: 'russian',
+        tags: 'pop,hits',
+        votes: 95,
+        bitrate: 256,
+        codec: 'MP3',
+      ),
+      RadioStation(
+        stationuuid: 'fallback-3',
+        name: 'BBC World Service',
+        url: 'https://stream.live.vc.bbcmedia.co.uk/bbc_world_service',
+        favicon: 'https://via.placeholder.com/150/45B7D1/FFFFFF?text=BBC',
+        country: 'United Kingdom',
+        countrycode: 'GB',
+        language: 'english',
+        tags: 'news,world',
+        votes: 150,
+        bitrate: 128,
+        codec: 'AAC',
+      ),
+    ];
   }
 
-  @override
-  Future<Result<void>> pauseStation() async {
-    try {
-      return await RadioPlayerService.pause();
-    } catch (e) {
-      return Result.failure(AppError.player('Failed to pause station: $e'));
-    }
-  }
-
-  @override
-  Future<Result<void>> resumeStation() async {
-    try {
-      return await RadioPlayerService.resume();
-    } catch (e) {
-      return Result.failure(AppError.player('Failed to resume station: $e'));
-    }
-  }
-
-  @override
-  Future<Result<void>> saveFavoriteStations(List<String> favoriteIds) async {
-    try {
-      await StorageService.saveFavoriteStations(favoriteIds);
-      return Result.success(null);
-    } catch (e) {
-      return Result.failure(AppError.storage('Failed to save favorites: $e'));
-    }
-  }
-
-  @override
-  Future<Result<List<String>>> loadFavoriteStations() async {
-    try {
-      final favorites = await StorageService.loadFavoriteStations();
-      return Result.success(favorites);
-    } catch (e) {
-      return Result.failure(AppError.storage('Failed to load favorites: $e'));
-    }
-  }
-
-  @override
-  Future<Result<bool>> validateStreamUrl(String url) async {
-    try {
-      return await RadioBrowserService.validateStreamUrl(url);
-    } catch (e) {
-      return Result.failure(AppError.validation('URL validation failed: $e'));
-    }
-  }
-
-  @override
-  Future<Result<void>> incrementStationClick(String stationId) async {
-    try {
-      return await RadioBrowserService.incrementClickCount(stationId);
-    } catch (e) {
-      return Result.failure(AppError.network('Failed to increment click count: $e'));
-    }
-  }
-
-  Future<Result<T>> _executeWithRetry<T>(
-      Future<Result<T>> Function() operation,
-      ) async {
-    AppError? lastError;
-
-    for (int attempt = 1; attempt <= _maxRetries; attempt++) {
-      try {
-        final result = await operation();
-
-        if (result.isSuccess) {
-          return result;
-        } else {
-          lastError = result.error!;
-
-          if (attempt == _maxRetries) {
-            break;
-          }
-
-          await Future.delayed(_retryDelay * attempt);
-        }
-      } catch (e) {
-        lastError = AppError.network('Attempt $attempt failed: $e');
-
-        if (attempt == _maxRetries) {
-          break;
-        }
-
-        await Future.delayed(_retryDelay * attempt);
-      }
-    }
-
-    return Result.failure(lastError ?? AppError.network('Unknown error'));
+  void dispose() {
+    _audioService.dispose();
+    _browserService.dispose();
   }
 }

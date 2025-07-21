@@ -12,10 +12,9 @@ dependencies:
     sdk: flutter
 
   provider: ^6.1.5
-  flutter_radio_player: ^3.0.2
+  audioplayers: ^6.4.0
   shared_preferences: ^2.5.3
   http: ^1.4.0
-  connectivity_plus: ^6.0.5     # ДЛЯ МОНИТОРИНГА СЕТИ
   cached_network_image: ^3.4.1
 
   cupertino_icons: ^1.0.8

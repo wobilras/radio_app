@@ -3,28 +3,44 @@ import 'package:provider/provider.dart';
 import 'package:radio_app/presentation/screens/main_screen.dart';
 import 'package:radio_app/providers/radio_provider.dart';
 
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+void main() {
   runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          create: (_) => RadioProvider(),
-          lazy: false,
-        ),
+        ChangeNotifierProvider(create: (_) => RadioProvider()),
       ],
       child: MaterialApp(
-        title: 'Radio App',
+        title: 'Radio Browser',
         theme: ThemeData(
           primarySwatch: Colors.blue,
           scaffoldBackgroundColor: Colors.grey[100],
+          appBarTheme: AppBarTheme(
+            elevation: 0,
+            backgroundColor: Colors.blue[700],
+            foregroundColor: Colors.white,
+          ),
+          elevatedButtonTheme: ElevatedButtonThemeData(
+            style: ElevatedButton.styleFrom(
+              elevation: 2,
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+          cardTheme: CardTheme(
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
         ),
         home: MainScreen(),
         debugShowCheckedModeBanner: false,
@@ -32,4 +48,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-

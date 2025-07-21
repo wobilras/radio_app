@@ -1,321 +1,113 @@
 import 'dart:async';
+import 'package:audioplayers/audioplayers.dart';
 
-import 'package:flutter_radio_player/data/flutter_radio_player_event.dart';
-import 'package:flutter_radio_player/flutter_radio_player.dart';
-import 'package:radio_app/data/radio_browser.dart';
+class AudioPlayerService {
+  static final AudioPlayerService _instance = AudioPlayerService._internal();
+  factory AudioPlayerService() => _instance;
+  AudioPlayerService._internal();
 
-import 'models/radio_station.dart';
+  final AudioPlayer _player = AudioPlayer();
 
-class RadioPlayerService {
-  static final FlutterRadioPlayer _radioPlayer = FlutterRadioPlayer();
-  static RadioStation? _currentStation;
-  static bool _isInitialized = false;
-  static bool _isPlaying = false;
-  static bool _pluginAvailable = false;
+  String? _currentStationId;
+  String? _currentStationName;
 
-  static StreamSubscription<bool>? _playbackSubscription;
-  static StreamSubscription<NowPlayingDataChanged?>? _nowPlayingSubscription;
+  final StreamController<PlayerState> _stateController = StreamController<PlayerState>.broadcast();
+  final StreamController<String?> _currentStationController = StreamController<String?>.broadcast();
 
-  static final StreamController<bool> _playingStateController =
-  StreamController<bool>.broadcast();
-  static final StreamController<RadioStation?> _currentStationController =
-  StreamController<RadioStation?>.broadcast();
-  static final StreamController<String?> _metadataController =
-  StreamController<String?>.broadcast();
-  static final StreamController<AppError?> _errorController =
-  StreamController<AppError?>.broadcast();
+  Stream<PlayerState> get stateStream => _stateController.stream;
+  Stream<String?> get currentStationStream => _currentStationController.stream;
 
-  static bool get isPlaying => _isPlaying;
-  static RadioStation? get currentStation => _currentStation;
-  static bool get isInitialized => _isInitialized;
-  static bool get pluginAvailable => _pluginAvailable;
+  String? get currentStationId => _currentStationId;
+  String? get currentStationName => _currentStationName;
 
-  static Stream<bool> get playingStateStream => _playingStateController.stream;
-  static Stream<RadioStation?> get currentStationStream => _currentStationController.stream;
-  static Stream<String?> get metadataStream => _metadataController.stream;
-  static Stream<AppError?> get errorStream => _errorController.stream;
+  bool get isPlaying => _player.state == PlayerState.playing;
 
-  static Future<Result<void>> initialize() async {
-    if (_isInitialized) {
-      return Result.success(null);
-    }
+  Future<void> initialize() async {
+    print('Инициализация Audio Player Service...');
 
-    print('Initializing Radio Player Service...');
+    _player.onPlayerStateChanged.listen((PlayerState state) {
+      print('Состояние плеера изменено: $state');
+      _stateController.add(state);
+    });
 
+    _player.onLog.listen((String message) {
+      print('AudioPlayer Log: $message');
+    });
+
+    print('Audio Player Service инициализирован успешно');
+  }
+
+  Future<void> playStation(String stationId, String stationName, String streamUrl) async {
     try {
-      try {
-        _playbackSubscription = _radioPlayer.getPlaybackStream().listen(
-              (isPlaying) {
-            _isPlaying = isPlaying;
-            _playingStateController.add(isPlaying);
-            if (!_pluginAvailable) {
-              print('Plugin became available!');
-              _pluginAvailable = true;
-            }
-          },
-          onError: (error) {
-            print('Playback stream error: $error');
-            _pluginAvailable = false;
-            _errorController.add(AppError.player('Playback state error: $error'));
-          },
-        );
+      print('Воспроизведение станции: $stationName ($stationId)');
+      print('Stream URL: $streamUrl');
+      await stop();
+      await _player.play(UrlSource(streamUrl));
 
-        print('Successfully subscribed to playback stream');
-        _pluginAvailable = true;
-      } catch (e) {
-        print('Failed to subscribe to playback stream: $e');
-        _pluginAvailable = false;
-      }
+      _currentStationId = stationId;
+      _currentStationName = stationName;
+      _currentStationController.add(stationId);
 
-      try {
-        _nowPlayingSubscription = _radioPlayer.getNowPlayingStream().listen(
-              (nowPlayingData) {
-            if (nowPlayingData != null) {
-              final metadata = nowPlayingData.toString();
-              _metadataController.add(metadata);
-            }
-          },
-          onError: (error) {
-            print('Now playing stream error: $error');
-          },
-        );
-        print('Successfully subscribed to now playing stream');
-      } catch (e) {
-        print('Failed to subscribe to now playing stream: $e');
-      }
-
-      _isInitialized = true;
-      print('Radio Player Service initialized - Plugin available: $_pluginAvailable');
-      return Result.success(null);
+      print('Станция $stationName начала воспроизводиться');
     } catch (e) {
-      print('Failed to initialize player: $e');
-      _pluginAvailable = false;
-      _isInitialized = true;
-      print('Running in fallback mode');
-      return Result.success(null);
+      print('Ошибка воспроизведения станции: $e');
+      rethrow;
     }
   }
 
-  static Future<Result<void>> play(RadioStation station) async {
+  Future<void> stop() async {
     try {
-      if (!_isInitialized) {
-        final initResult = await initialize();
-        if (initResult.isFailure) {
-          return initResult;
-        }
-      }
+      print('Остановка воспроизведения');
+      await _player.stop();
 
-      if (!_pluginAvailable) {
-        print('Plugin not available, simulating playback for: ${station.name}');
-        _currentStation = station;
-        _isPlaying = true;
-        _currentStationController.add(station);
-        _playingStateController.add(true);
-        return Result.success(null);
-      }
-
-      if (_isPlaying && _currentStation?.id == station.id) {
-        return Result.success(null);
-      }
-
-      // Валидируем URL перед воспроизведением
-      if (!station.isValidStream) {
-        return Result.failure(AppError.validation('Invalid stream URL'));
-      }
-
-      // Останавливаем текущее воспроизведение если играет другая станция
-      if (_isPlaying && _currentStation?.id != station.id) {
-        try {
-          await _radioPlayer.pause();
-        } catch (e) {
-          print('Failed to pause previous station: $e');
-        }
-      }
-
-      // Инициализируем плеер с новой станцией
-      try {
-        await _radioPlayer.initialize([
-          {
-            "title": station.name,
-            "artwork": station.imageUrl,
-            "url": station.streamUrl,
-            "description": station.description,
-          }
-        ], true); // autoPlay = true
-
-        _currentStation = station;
-        _currentStationController.add(station);
-
-        return Result.success(null);
-      } catch (e) {
-        print('Failed to initialize radio player: $e');
-        // Fallback к эмуляции
-        _pluginAvailable = false;
-        _currentStation = station;
-        _isPlaying = true;
-        _currentStationController.add(station);
-        _playingStateController.add(true);
-        return Result.success(null);
-      }
-    } catch (e) {
-      _currentStation = null;
+      String? previousStation = _currentStationId;
+      _currentStationId = null;
+      _currentStationName = null;
       _currentStationController.add(null);
-      return Result.failure(AppError.player('Failed to play station: $e'));
-    }
-  }
 
-  // Остановка воспроизведения
-  static Future<Result<void>> stop() async {
-    try {
-      if (!_isInitialized) {
-        return Result.success(null);
+      if (previousStation != null) {
+        print('Воспроизведение станции остановлено');
       }
-
-      if (_pluginAvailable) {
-        try {
-          await _radioPlayer.pause();
-        } catch (e) {
-          print('Failed to pause radio player: $e');
-          // Продолжаем работу в fallback режиме
-        }
-      }
-
-      _currentStation = null;
-      _isPlaying = false;
-      _currentStationController.add(null);
-      _playingStateController.add(false);
-
-      return Result.success(null);
     } catch (e) {
-      return Result.failure(AppError.player('Failed to stop playback: $e'));
+      print('Ошибка остановки воспроизведения: $e');
+      rethrow;
     }
   }
 
-  // Пауза
-  static Future<Result<void>> pause() async {
+  Future<void> pause() async {
     try {
-      if (!_isInitialized || !_isPlaying) {
-        return Result.success(null);
-      }
-
-      if (_pluginAvailable) {
-        try {
-          await _radioPlayer.pause();
-        } catch (e) {
-          print('Failed to pause: $e');
-          // Fallback
-          _isPlaying = false;
-          _playingStateController.add(false);
-        }
-      } else {
-        _isPlaying = false;
-        _playingStateController.add(false);
-      }
-
-      return Result.success(null);
+      await _player.pause();
+      print('Воспроизведение приостановлено');
     } catch (e) {
-      return Result.failure(AppError.player('Failed to pause playback: $e'));
+      print('Ошибка приостановки воспроизведения: $e');
+      rethrow;
     }
   }
 
-  // Возобновление воспроизведения
-  static Future<Result<void>> resume() async {
+  Future<void> resume() async {
     try {
-      if (!_isInitialized) {
-        return Result.failure(AppError.player('Player not initialized'));
-      }
-
-      if (_pluginAvailable) {
-        try {
-          await _radioPlayer.play();
-        } catch (e) {
-          print('Failed to resume: $e');
-          // Fallback
-          _isPlaying = true;
-          _playingStateController.add(true);
-        }
-      } else {
-        _isPlaying = true;
-        _playingStateController.add(true);
-      }
-
-      return Result.success(null);
+      await _player.resume();
+      print('Воспроизведение возобновлено');
     } catch (e) {
-      return Result.failure(AppError.player('Failed to resume playback: $e'));
+      print('Ошибка возобновления воспроизведения: $e');
+      rethrow;
     }
   }
 
-  // Переключение воспроизведения
-  static Future<Result<void>> togglePlayback() async {
-    if (_isPlaying) {
-      return await pause();
-    } else if (_currentStation != null) {
-      return await resume();
-    } else {
-      return Result.failure(AppError.player('No station selected'));
-    }
-  }
-
-  // Проверка состояния плеера
-  static Future<Result<Map<String, dynamic>>> getPlayerState() async {
+  Future<void> setVolume(double volume) async {
     try {
-      return Result.success({
-        'isPlaying': _isPlaying,
-        'currentStation': _currentStation?.toJson(),
-        'isInitialized': _isInitialized,
-        'pluginAvailable': _pluginAvailable,
-      });
+      await _player.setVolume(volume.clamp(0.0, 1.0));
+      print('Громкость установлена: ${(volume * 100).round()}%');
     } catch (e) {
-      return Result.failure(AppError.player('Failed to get player state: $e'));
+      print('Ошибка установки громкости: $e');
+      rethrow;
     }
   }
 
-  // Валидация URL потока перед воспроизведением
-  static Future<Result<bool>> validateStreamUrl(String url) async {
-    try {
-      // Используем сервис из RadioBrowserService
-      return await RadioBrowserService.validateStreamUrl(url);
-    } catch (e) {
-      return Result.failure(AppError.validation('Stream validation failed: $e'));
-    }
-  }
-
-  // Освобождение ресурсов
-  static Future<void> dispose() async {
-    try {
-      await _playbackSubscription?.cancel();
-      await _nowPlayingSubscription?.cancel();
-
-      if (_pluginAvailable) {
-        try {
-          await _radioPlayer.pause();
-        } catch (e) {
-          print('Error during player dispose: $e');
-        }
-      }
-
-      await _playingStateController.close();
-      await _currentStationController.close();
-      await _metadataController.close();
-      await _errorController.close();
-
-      _isInitialized = false;
-      _isPlaying = false;
-      _currentStation = null;
-    } catch (e) {
-      print('Error disposing radio player: $e');
-    }
-  }
-
-  // Методы для отладки
-  static String getDebugInfo() {
-    return '''
-    Player Debug Info:
-    - Initialized: $_isInitialized
-    - Playing: $_isPlaying
-    - Plugin Available: $_pluginAvailable
-    - Current Station: ${_currentStation?.name ?? 'None'}
-    - Current URL: ${_currentStation?.streamUrl ?? 'None'}
-    ''';
+  void dispose() {
+    _player.dispose();
+    _stateController.close();
+    _currentStationController.close();
+    print('Audio Player Service освобожден');
   }
 }

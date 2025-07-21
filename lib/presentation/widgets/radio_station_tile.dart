@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../data/models/radio_station.dart';
 
@@ -48,38 +47,16 @@ class RadioStationTile extends StatelessWidget {
                     Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        borderRadius: const BorderRadius.vertical(
+                        borderRadius: BorderRadius.vertical(
                           top: Radius.circular(16.0),
                         ),
                         color: Colors.grey[300],
                       ),
                       child: ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
+                        borderRadius: BorderRadius.vertical(
                           top: Radius.circular(16.0),
                         ),
-                        child: CachedNetworkImage(
-                          imageUrl: station.imageUrl,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(
-                            color: Colors.blue[100],
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.blue[700],
-                              ),
-                            ),
-                          ),
-                          errorWidget: (context, url, error) => Container(
-                            color: Colors.blue[100],
-                            child: Center(
-                              child: Icon(
-                                Icons.radio,
-                                size: 40,
-                                color: Colors.blue[700],
-                              ),
-                            ),
-                          ),
-                        ),
+                        child: _buildStationImage(),
                       ),
                     ),
                     if (isPlaying)
@@ -108,6 +85,28 @@ class RadioStationTile extends StatelessWidget {
                           ),
                         ),
                       ),
+                    // Индикатор качества
+                    if (station.bitrate > 0)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: Container(
+                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.7),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${station.bitrate}k',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    // Кнопка избранного
                     Positioned(
                       top: 8,
                       right: 8,
@@ -139,52 +138,58 @@ class RadioStationTile extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (station.bitrate != null && station.bitrate! > 0)
-                      Positioned(
-                        bottom: 8,
-                        left: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.7),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            station.qualityRating,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),
               Expanded(
                 flex: 2,
                 child: Padding(
-                  padding: EdgeInsets.all(6.0),
+                  padding: EdgeInsets.all(8.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        station.name,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[800],
+                      Flexible(
+                        child: Text(
+                          station.name,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
                       SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (station.country.isNotEmpty) ...[
+                            Icon(
+                              Icons.public,
+                              size: 12,
+                              color: Colors.grey[600],
+                            ),
+                            SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                station.country,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey[600],
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      SizedBox(height: 2),
                       Text(
-                        station.description,
+                        station.displayInfo,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w600,
                           color: Colors.blue[600],
                         ),
@@ -197,6 +202,75 @@ class RadioStationTile extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStationImage() {
+    if (station.favicon.isNotEmpty &&
+        (station.favicon.startsWith('http://') || station.favicon.startsWith('https://'))) {
+      return Image.network(
+        station.favicon,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _buildFallbackImage(),
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return _buildFallbackImage();
+        },
+      );
+    }
+    return _buildFallbackImage();
+  }
+
+  Widget _buildFallbackImage() {
+    final colors = [
+      Colors.blue[100]!,
+      Colors.green[100]!,
+      Colors.orange[100]!,
+      Colors.purple[100]!,
+      Colors.red[100]!,
+      Colors.teal[100]!,
+    ];
+
+    final iconColors = [
+      Colors.blue[700]!,
+      Colors.green[700]!,
+      Colors.orange[700]!,
+      Colors.purple[700]!,
+      Colors.red[700]!,
+      Colors.teal[700]!,
+    ];
+
+    final colorIndex = station.name.hashCode.abs() % colors.length;
+
+    return Container(
+      color: colors[colorIndex],
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.radio,
+              size: 32,
+              color: iconColors[colorIndex],
+            ),
+            if (station.name.length <= 10)
+              Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text(
+                  station.name.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.bold,
+                    color: iconColors[colorIndex],
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
         ),
       ),
     );

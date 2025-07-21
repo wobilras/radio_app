@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../../providers/radio_provider.dart';
 
 class MainAppBar extends StatefulWidget implements PreferredSizeWidget {
@@ -17,13 +16,13 @@ class MainAppBar extends StatefulWidget implements PreferredSizeWidget {
   });
 
   @override
-  State<MainAppBar> createState() => _CustomAppBarState();
+  State<MainAppBar> createState() => _MainAppBarState();
 
   @override
-  Size get preferredSize => Size.fromHeight(140.0);
+  Size get preferredSize => Size.fromHeight(160.0);
 }
 
-class _CustomAppBarState extends State<MainAppBar> {
+class _MainAppBarState extends State<MainAppBar> {
   @override
   void initState() {
     super.initState();
@@ -113,24 +112,41 @@ class _CustomAppBarState extends State<MainAppBar> {
                     fontSize: 16,
                     color: Colors.grey[800],
                   ),
+                  onSubmitted: (query) {
+                    if (query.trim().isNotEmpty) {
+                      widget.onTabChanged(TabType.search);
+                    }
+                  },
                 ),
               ),
               SizedBox(height: 16),
+              // Вкладки
               Row(
                 children: [
                   Expanded(
                     child: _TabButton(
-                      title: 'Список радиостанций',
+                      title: 'Популярные',
+                      icon: Icons.trending_up,
                       isSelected: widget.currentTab == TabType.stations,
                       onTap: () => widget.onTabChanged(TabType.stations),
                     ),
                   ),
-                  SizedBox(width: 24),
+                  SizedBox(width: 8),
                   Expanded(
                     child: _TabButton(
                       title: 'Избранное',
+                      icon: Icons.favorite,
                       isSelected: widget.currentTab == TabType.favorites,
                       onTap: () => widget.onTabChanged(TabType.favorites),
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: _TabButton(
+                      title: 'Поиск',
+                      icon: Icons.search,
+                      isSelected: widget.currentTab == TabType.search,
+                      onTap: () => widget.onTabChanged(TabType.search),
                     ),
                   ),
                 ],
@@ -145,12 +161,14 @@ class _CustomAppBarState extends State<MainAppBar> {
 
 class _TabButton extends StatelessWidget {
   final String title;
+  final IconData icon;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _TabButton({
     Key? key,
     required this.title,
+    required this.icon,
     required this.isSelected,
     required this.onTap,
   }) : super(key: key);
@@ -160,7 +178,7 @@ class _TabButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.symmetric(vertical: 8),
+        padding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
@@ -169,14 +187,25 @@ class _TabButton extends StatelessWidget {
             ),
           ),
         ),
-        child: Text(
-          title,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
-            fontSize: 16,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
+              size: 20,
+            ),
+            SizedBox(height: 4),
+            Text(
+              title,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );

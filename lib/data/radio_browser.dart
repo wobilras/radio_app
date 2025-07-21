@@ -1,451 +1,182 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-
-import 'models/radio_station.dart';
 import 'package:http/http.dart' as http;
+import '../data/models/radio_station.dart';
 
 class RadioBrowserService {
-  static List<String> _servers = [
+  static const String _userAgent = 'RadioApp/1.0';
+  static const int _timeout = 10;
+
+  List<String> _servers = [
     'https://de1.api.radio-browser.info',
     'https://nl1.api.radio-browser.info',
+    'https://at1.api.radio-browser.info',
+    'https://fi1.api.radio-browser.info',
     'https://ru1.api.radio-browser.info',
   ];
 
-  static const String _userAgent = 'FlutterRadioApp/1.0.0';
-  static const Duration _timeout = Duration(seconds: 5);
-  static DateTime? _lastServerUpdate;
-  static const Duration _serverUpdateInterval = Duration(hours: 1);
-  static int _currentServerIndex = 0;
+  late http.Client _httpClient;
+  final Random _random = Random();
 
-  static String? _cachedServer;
-
-  static String get _baseUrl {
-    return _cachedServer ?? _servers[_currentServerIndex];
+  RadioBrowserService() {
+    _httpClient = http.Client();
+    _updateServersList();
   }
 
-  static Future<void> updateServersList() async {
-    if (_lastServerUpdate != null &&
-        DateTime.now().difference(_lastServerUpdate!) < _serverUpdateInterval) {
-      return;
-    }
-
+  Future<void> _updateServersList() async {
     try {
-      print('Updating Radio Browser servers list via DNS lookup...');
+      print('Обновление списка серверов Radio Browser через DNS lookup...');
 
-      final List<InternetAddress> addresses =
-      await InternetAddress.lookup('all.api.radio-browser.info')
-          .timeout(Duration(seconds: 5));
+      final addresses = await InternetAddress.lookup('all.api.radio-browser.info');
 
-      List<String> newServers = [];
+      if (addresses.isNotEmpty) {
+        List<String> newServers = [];
 
-      for (final address in addresses) {
-        try {
-          final List<InternetAddress> reverseAddresses =
-          await InternetAddress.lookup(address.address)
-              .timeout(Duration(seconds: 3));
-
-          if (reverseAddresses.isNotEmpty) {
-            final hostname = reverseAddresses.first.host;
-
-            if (hostname.contains('api.radio-browser.info')) {
-              final serverUrl = 'https://$hostname';
+        for (var address in addresses) {
+          try {
+            final hostnames = await InternetAddress.lookup(address.address, type: InternetAddressType.any);
+            for (var hostname in hostnames) {
+              final serverUrl = 'https://${hostname.host}';
               if (!newServers.contains(serverUrl)) {
                 newServers.add(serverUrl);
               }
             }
-          }
-        } catch (e) {
-          print('Reverse lookup failed for ${address.address}: $e');
-          final serverUrl = 'https://${address.address}';
-          if (!newServers.contains(serverUrl)) {
-            newServers.add(serverUrl);
-          }
-        }
-      }
-
-      if (newServers.isNotEmpty) {
-        print('Found ${newServers.length} servers via DNS');
-
-        final combinedServers = <String>[];
-        combinedServers.addAll(newServers);
-
-        for (final fallbackServer in _servers) {
-          if (!combinedServers.contains(fallbackServer)) {
-            combinedServers.add(fallbackServer);
+          } catch (e) {
+            final serverUrl = 'https://${address.address}';
+            if (!newServers.contains(serverUrl)) {
+              newServers.add(serverUrl);
+            }
           }
         }
 
-        _servers = combinedServers;
-        _cachedServer = null; // Сбрасываем кэш
-        _currentServerIndex = 0; // Начинаем с первого сервера
-        _lastServerUpdate = DateTime.now();
-
-        print('Updated servers list (${_servers.length} total):');
-        for (int i = 0; i < _servers.length; i++) {
-          print('  $i: ${_servers[i]}');
+        if (newServers.isNotEmpty) {
+          _servers = newServers;
+          print('Найдено серверов: ${_servers.length}');
+        } else {
+          print('DNS lookup не вернул серверов, используем резервный список');
         }
       } else {
-        print('No servers found via DNS, keeping fallback list');
-      }
-
-    } catch (e) {
-      print('DNS lookup failed: $e');
-      print('Using fallback servers list (${_servers.length} servers)');
-    }
-  }
-
-  static Future<Result<List<RadioStation>>> getTopVotedStations({
-    int limit = 50,
-    int offset = 0,
-  }) async {
-    await updateServersList();
-
-    try {
-      final url = '$_baseUrl/json/stations/topvote/$limit/$offset';
-      final response = await _makeRequest(url);
-
-      if (response.isSuccess) {
-        final List<dynamic> data = response.data;
-        final stations = data
-            .map((json) => RadioStation.fromRadioBrowserJson(json))
-            .where((station) => station.isValidStream)
-            .toList();
-        return Result.success(stations);
-      } else {
-        return Result.failure(response.error!);
+        print('DNS lookup не вернул адресов, используем резервный список');
       }
     } catch (e) {
-      return Result.failure(AppError.network('Failed to load top stations: $e'));
+      print('Ошибка DNS lookup: $e, используем резервный список');
     }
+
+    _servers.shuffle(_random);
+    print('Список серверов рандомизирован: ${_servers.length} серверов');
   }
 
-  static Future<Result<List<RadioStation>>> getTopClickStations({
-    int limit = 50,
-    int offset = 0,
-  }) async {
-    await updateServersList();
-
-    try {
-      final url = '$_baseUrl/json/stations/topclick/$limit/$offset';
-      final response = await _makeRequest(url);
-
-      if (response.isSuccess) {
-        final List<dynamic> data = response.data;
-        final stations = data
-            .map((json) => RadioStation.fromRadioBrowserJson(json))
-            .where((station) => station.isValidStream)
-            .toList();
-        return Result.success(stations);
-      } else {
-        return Result.failure(response.error!);
-      }
-    } catch (e) {
-      return Result.failure(AppError.network('Failed to load popular stations: $e'));
+  /// Выполняет HTTP запрос с перебором серверов при неудаче
+  Future<http.Response> _makeRequest(String endpoint, {Map<String, String>? queryParams}) async {
+    String queryString = '';
+    if (queryParams != null && queryParams.isNotEmpty) {
+      queryString = '?${queryParams.entries
+          .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+          .join('&')}';
     }
-  }
 
-  static Future<Result<List<RadioStation>>> searchStations({
-    String? name,
-    String? country,
-    String? countryCode,
-    String? language,
-    String? tag,
-    String? codec,
-    int? minBitrate,
-    int? maxBitrate,
-    bool? hasGeoInfo,
-    bool? isHttps,
-    int limit = 30,
-    int offset = 0,
-  }) async {
-    await updateServersList();
-
-    try {
-      final queryParams = <String, String>{
-        'limit': limit.toString(),
-        'offset': offset.toString(),
-      };
-
-      if (name != null && name.isNotEmpty) queryParams['name'] = name;
-      if (country != null && country.isNotEmpty) queryParams['country'] = country;
-      if (countryCode != null && countryCode.isNotEmpty) queryParams['countrycode'] = countryCode;
-      if (language != null && language.isNotEmpty) queryParams['language'] = language;
-      if (tag != null && tag.isNotEmpty) queryParams['tag'] = tag;
-      if (codec != null && codec.isNotEmpty) queryParams['codec'] = codec;
-      if (minBitrate != null) queryParams['bitrateMin'] = minBitrate.toString();
-      if (maxBitrate != null) queryParams['bitrateMax'] = maxBitrate.toString();
-      if (hasGeoInfo == true) queryParams['has_geo_info'] = 'true';
-      if (isHttps == true) queryParams['is_https'] = 'true';
-
-      final uri = Uri.parse('$_baseUrl/json/stations/search').replace(
-        queryParameters: queryParams,
-      );
-
-      final response = await _makeRequest(uri.toString());
-
-      if (response.isSuccess) {
-        final List<dynamic> data = response.data;
-        final stations = data
-            .map((json) => RadioStation.fromRadioBrowserJson(json))
-            .where((station) => station.isValidStream)
-            .toList();
-        return Result.success(stations);
-      } else {
-        return Result.failure(response.error!);
-      }
-    } catch (e) {
-      return Result.failure(AppError.network('Search failed: $e'));
-    }
-  }
-
-  static Future<Result<List<RadioStation>>> getStationsByCountry(
-      String countryCode, {
-        int limit = 30,
-        int offset = 0,
-      }) async {
-    await updateServersList();
-
-    try {
-      final url = '$_baseUrl/json/stations/bycountrycodeexact/$countryCode?limit=$limit&offset=$offset';
-      final response = await _makeRequest(url);
-
-      if (response.isSuccess) {
-        final List<dynamic> data = response.data;
-        final stations = data
-            .map((json) => RadioStation.fromRadioBrowserJson(json))
-            .where((station) => station.isValidStream)
-            .toList();
-        return Result.success(stations);
-      } else {
-        return Result.failure(response.error!);
-      }
-    } catch (e) {
-      return Result.failure(AppError.network('Failed to load stations by country: $e'));
-    }
-  }
-
-  static Future<Result<List<RadioStation>>> getStationsByTag(
-      String tag, {
-        int limit = 30,
-        int offset = 0,
-      }) async {
-    await updateServersList();
-
-    try {
-      final url = '$_baseUrl/json/stations/bytagexact/$tag?limit=$limit&offset=$offset';
-      final response = await _makeRequest(url);
-
-      if (response.isSuccess) {
-        final List<dynamic> data = response.data;
-        final stations = data
-            .map((json) => RadioStation.fromRadioBrowserJson(json))
-            .where((station) => station.isValidStream)
-            .toList();
-        return Result.success(stations);
-      } else {
-        return Result.failure(response.error!);
-      }
-    } catch (e) {
-      return Result.failure(AppError.network('Failed to load stations by tag: $e'));
-    }
-  }
-
-  static Future<Result<List<RadioStation>>> getNewStations({
-    int limit = 50,
-    int offset = 0,
-  }) async {
-    await updateServersList();
-
-    try {
-      final url = '$_baseUrl/json/stations/lastchange/$limit/$offset';
-      final response = await _makeRequest(url);
-
-      if (response.isSuccess) {
-        final List<dynamic> data = response.data;
-        final stations = data
-            .map((json) => RadioStation.fromRadioBrowserJson(json))
-            .where((station) => station.isValidStream)
-            .toList();
-        return Result.success(stations);
-      } else {
-        return Result.failure(response.error!);
-      }
-    } catch (e) {
-      return Result.failure(AppError.network('Failed to load new stations: $e'));
-    }
-  }
-
-  static Future<Result<void>> incrementClickCount(String stationId) async {
-    try {
-      final url = '$_baseUrl/json/url/$stationId';
-      await _makeRequest(url);
-      return Result.success(null);
-    } catch (e) {
-      return Result.failure(AppError.network('Failed to increment click count: $e'));
-    }
-  }
-
-  static Future<Result<List<Map<String, dynamic>>>> getCountries() async {
-    await updateServersList();
-
-    try {
-      final url = '$_baseUrl/json/countries';
-      final response = await _makeRequest(url);
-
-      if (response.isSuccess) {
-        final List<dynamic> data = response.data;
-        return Result.success(List<Map<String, dynamic>>.from(data));
-      } else {
-        return Result.failure(response.error!);
-      }
-    } catch (e) {
-      return Result.failure(AppError.network('Failed to load countries: $e'));
-    }
-  }
-
-  static Future<Result<List<Map<String, dynamic>>>> getTags() async {
-    await updateServersList();
-
-    try {
-      final url = '$_baseUrl/json/tags';
-      final response = await _makeRequest(url);
-
-      if (response.isSuccess) {
-        final List<dynamic> data = response.data;
-        return Result.success(List<Map<String, dynamic>>.from(data));
-      } else {
-        return Result.failure(response.error!);
-      }
-    } catch (e) {
-      return Result.failure(AppError.network('Failed to load tags: $e'));
-    }
-  }
-
-  static Future<Result<dynamic>> _makeRequest(String url) async {
-    AppError? lastError;
-
-    for (int i = 0; i < _servers.length; i++) {
+    for (String server in _servers) {
       try {
-        final currentServer = _servers[i];
-        final Uri originalUri = Uri.parse(url);
-        final Uri newUri = Uri.parse(currentServer).replace(
-          path: originalUri.path,
-          query: originalUri.query,
-        );
+        final url = '$server$endpoint$queryString';
+        print('Попытка запроса к: $url');
 
-        final response = await http.get(
-          newUri,
+        final response = await _httpClient
+            .get(
+          Uri.parse(url),
           headers: {
             'User-Agent': _userAgent,
-            'Accept': 'application/json',
+            'Content-Type': 'application/json',
           },
-        ).timeout(_timeout);
+        )
+            .timeout(Duration(seconds: _timeout));
 
         if (response.statusCode == 200) {
-          _cachedServer = currentServer;
-          final data = json.decode(response.body);
-          return Result.success(data);
+          print('Успешный ответ от сервера: $server');
+          return response;
         } else {
-          lastError = AppError.network(
-            'HTTP ${response.statusCode}: ${response.reasonPhrase}',
-          );
+          print('Сервер $server вернул код: ${response.statusCode}');
+          continue;
         }
       } catch (e) {
-        lastError = AppError.network('Server $i error: $e');
-        print('Server ${_servers[i]} failed: $e');
+        print('Ошибка сервера $server: $e');
+        continue;
       }
     }
 
-    return Result.failure(lastError ?? AppError.network('All servers failed'));
+    throw Exception('Все серверы Radio Browser недоступны');
   }
 
-  static Future<Result<bool>> validateStreamUrl(String url) async {
+  Future<List<RadioStation>> getPopularStations({int limit = 50}) async {
     try {
-      final response = await http.head(
-        Uri.parse(url),
-        headers: {'User-Agent': _userAgent},
-      ).timeout(Duration(seconds: 5));
+      final response = await _makeRequest(
+        '/json/stations/topvote',
+        queryParams: {'limit': limit.toString()},
+      );
 
-      final isValid = response.statusCode == 200;
-      return Result.success(isValid);
+      final List<dynamic> data = json.decode(response.body);
+      return data.map((json) => RadioStation.fromJson(json)).toList();
     } catch (e) {
-      return Result.success(false);
+      print('Ошибка получения популярных станций: $e');
+      return [];
     }
   }
 
-  static Map<String, dynamic> getServerInfo() {
-    return {
-      'servers': _servers,
-      'cachedServer': _cachedServer,
-      'lastUpdate': _lastServerUpdate?.toIso8601String(),
-      'nextUpdate': _lastServerUpdate?.add(_serverUpdateInterval).toIso8601String(),
-    };
+  Future<List<RadioStation>> searchStations({
+    String? name,
+    String? country,
+    String? tag,
+    int limit = 50,
+  }) async {
+    try {
+      Map<String, String> params = {'limit': limit.toString()};
+
+      if (name != null && name.isNotEmpty) {
+        params['name'] = name;
+      }
+      if (country != null && country.isNotEmpty) {
+        params['country'] = country;
+      }
+      if (tag != null && tag.isNotEmpty) {
+        params['tag'] = tag;
+      }
+
+      final response = await _makeRequest('/json/stations/search', queryParams: params);
+
+      final List<dynamic> data = json.decode(response.body);
+      return data.map((json) => RadioStation.fromJson(json)).toList();
+    } catch (e) {
+      print('Ошибка поиска станций: $e');
+      return [];
+    }
   }
 
-  static Future<void> forceUpdateServers() async {
-    _lastServerUpdate = null;
-    await updateServersList();
+  Future<List<RadioStation>> getStationsByCountry(String countryCode, {int limit = 50}) async {
+    try {
+      final response = await _makeRequest(
+        '/json/stations/bycountrycodeexact/$countryCode',
+        queryParams: {'limit': limit.toString()},
+      );
+
+      final List<dynamic> data = json.decode(response.body);
+      return data.map((json) => RadioStation.fromJson(json)).toList();
+    } catch (e) {
+      print('Ошибка получения станций по стране: $e');
+      return [];
+    }
   }
-}
 
-sealed class Result<T> {
-  factory Result.success(T data) = Success<T>;
-  factory Result.failure(AppError error) = Failure<T>;
+  /// Регистрирует клик по станции (важно для статистики согласно документации)
+  Future<void> registerStationClick(String stationUuid) async {
+    try {
+      await _makeRequest('/json/url/$stationUuid');
+      print('Клик по станции зарегистрирован: $stationUuid');
+    } catch (e) {
+      print('Ошибка регистрации клика: $e');
+    }
+  }
 
-  bool get isSuccess => this is Success<T>;
-  bool get isFailure => this is Failure<T>;
-
-  T? get data => isSuccess ? (this as Success<T>).data : null;
-  AppError? get error => isFailure ? (this as Failure<T>).error : null;
-}
-
-class Success<T> implements Result<T> {
-  final T data;
-  Success(this.data);
-
-  @override
-  bool get isSuccess => true;
-
-  @override
-  bool get isFailure => false;
-
-  @override
-  AppError? get error => null;
-}
-
-class Failure<T> implements Result<T> {
-  final AppError error;
-  Failure(this.error);
-
-  @override
-  bool get isSuccess => false;
-
-  @override
-  bool get isFailure => true;
-
-  @override
-  T? get data => null;
-}
-
-class AppError {
-  final String message;
-  final ErrorType type;
-
-  AppError(this.message, this.type);
-
-  factory AppError.network(String message) => AppError(message, ErrorType.network);
-  factory AppError.validation(String message) => AppError(message, ErrorType.validation);
-  factory AppError.player(String message) => AppError(message, ErrorType.player);
-  factory AppError.storage(String message) => AppError(message, ErrorType.storage);
-
-  @override
-  String toString() => message;
-}
-
-enum ErrorType {
-  network,
-  validation,
-  player,
-  storage,
+  void dispose() {
+    _httpClient.close();
+  }
 }
