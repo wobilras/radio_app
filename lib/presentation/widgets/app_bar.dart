@@ -112,11 +112,6 @@ class _MainAppBarState extends State<MainAppBar> {
                     fontSize: 16,
                     color: Colors.grey[800],
                   ),
-                  onSubmitted: (query) {
-                    if (query.trim().isNotEmpty) {
-                      widget.onTabChanged(TabType.search);
-                    }
-                  },
                 ),
               ),
               SizedBox(height: 16),
@@ -131,22 +126,13 @@ class _MainAppBarState extends State<MainAppBar> {
                       onTap: () => widget.onTabChanged(TabType.stations),
                     ),
                   ),
-                  SizedBox(width: 8),
+                  SizedBox(width: 16),
                   Expanded(
                     child: _TabButton(
                       title: 'Избранное',
                       icon: Icons.favorite,
                       isSelected: widget.currentTab == TabType.favorites,
                       onTap: () => widget.onTabChanged(TabType.favorites),
-                    ),
-                  ),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: _TabButton(
-                      title: 'Поиск',
-                      icon: Icons.search,
-                      isSelected: widget.currentTab == TabType.search,
-                      onTap: () => widget.onTabChanged(TabType.search),
                     ),
                   ),
                 ],
@@ -166,12 +152,12 @@ class _TabButton extends StatelessWidget {
   final VoidCallback onTap;
 
   const _TabButton({
-    Key? key,
+    super.key,
     required this.title,
     required this.icon,
     required this.isSelected,
     required this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

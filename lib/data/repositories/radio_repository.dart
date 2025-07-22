@@ -8,6 +8,7 @@ abstract class RadioRepository {
   Future<List<RadioStation>> getStationsByCountry(String countryCode);
   Future<void> playStation(RadioStation station);
   Future<void> stopStation();
+  Future<void> refreshServers();
   Stream<String?> get currentStationStream;
   String? get currentStationId;
 }
@@ -30,17 +31,34 @@ class RadioRepositoryImpl implements RadioRepository {
   Future<List<RadioStation>> getRadioStations() async {
     try {
       print('Загрузка популярных радиостанций...');
-
       final stations = await _browserService.getPopularStations(limit: 100);
-
       final validStations = stations.where((station) {
         return station.url.isNotEmpty &&
             station.name.isNotEmpty &&
             (station.url.startsWith('http://') || station.url.startsWith('https://'));
       }).toList();
 
-      print('Загружено ${validStations.length} станций');
-      return validStations;
+      if (validStations.isNotEmpty) {
+        print('Загружено ${validStations.length} станций');
+        return validStations;
+      } else {
+        print('Нет валидных станций, пробуем обновить серверы...');
+        await _browserService.refreshServers();
+        final retryStations = await _browserService.getPopularStations(limit: 100);
+        final retryValidStations = retryStations.where((station) {
+          return station.url.isNotEmpty &&
+              station.name.isNotEmpty &&
+              (station.url.startsWith('http://') || station.url.startsWith('https://'));
+        }).toList();
+
+        if (retryValidStations.isNotEmpty) {
+          print('После обновления серверов загружено ${retryValidStations.length} станций');
+          return retryValidStations;
+        } else {
+          print('Используем резервные данные');
+          return _getFallbackStations();
+        }
+      }
     } catch (e) {
       print('Ошибка загрузки станций: $e');
       return _getFallbackStations();
@@ -67,7 +85,7 @@ class RadioRepositoryImpl implements RadioRepository {
             (station.url.startsWith('http://') || station.url.startsWith('https://'));
       }).toList();
 
-      print('Найдено ${validStations.length} станций по запросу: $query');
+      print('Найдено ${validStations.length} станций по запросу: "$query"');
       return validStations;
     } catch (e) {
       print('Ошибка поиска станций: $e');
@@ -100,7 +118,6 @@ class RadioRepositoryImpl implements RadioRepository {
   Future<void> playStation(RadioStation station) async {
     try {
       await _browserService.registerStationClick(station.stationuuid);
-
       await _audioService.playStation(
         station.stationuuid,
         station.name,
@@ -123,6 +140,11 @@ class RadioRepositoryImpl implements RadioRepository {
       print('Ошибка остановки воспроизведения: $e');
       rethrow;
     }
+  }
+
+  @override
+  Future<void> refreshServers() async {
+    await _browserService.refreshServers();
   }
 
   /// Резервные данные на случай проблем с API

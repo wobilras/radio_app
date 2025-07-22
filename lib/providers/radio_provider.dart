@@ -6,7 +6,7 @@ import 'dart:convert';
 import '../data/models/radio_station.dart';
 import '../data/repositories/radio_repository.dart';
 
-enum TabType { stations, favorites, search }
+enum TabType { stations, favorites }
 
 class RadioProvider extends ChangeNotifier {
   final RadioRepository _repository = RadioRepositoryImpl();
@@ -15,17 +15,20 @@ class RadioProvider extends ChangeNotifier {
   List<RadioStation> _favoriteStations = [];
   List<RadioStation> _searchResults = [];
   bool _isLoading = false;
+  bool _isSearching = false;
   String? _currentPlayingId;
   String? _error;
   TabType _currentTab = TabType.stations;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   StreamSubscription? _currentStationSubscription;
+  Timer? _searchDebounceTimer;
 
   List<RadioStation> get stations => _stations;
   List<RadioStation> get favoriteStations => _favoriteStations;
   List<RadioStation> get searchResults => _searchResults;
   bool get isLoading => _isLoading;
+  bool get isSearching => _isSearching;
   String? get currentPlayingId => _currentPlayingId;
   String? get error => _error;
   TabType get currentTab => _currentTab;
@@ -33,29 +36,17 @@ class RadioProvider extends ChangeNotifier {
   TextEditingController get searchController => _searchController;
 
   List<RadioStation> get filteredStations {
+    if (_searchQuery.isNotEmpty && _searchResults.isNotEmpty) {
+      return _searchResults;
+    }
+    if (_searchQuery.isNotEmpty && _searchResults.isEmpty && !_isSearching) {
+      return [];
+    }
     switch (_currentTab) {
       case TabType.stations:
-        if (_searchQuery.isNotEmpty) {
-          return _stations.where((station) {
-            return station.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                station.country.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                station.tags.toLowerCase().contains(_searchQuery.toLowerCase());
-          }).toList();
-        }
         return _stations;
-
       case TabType.favorites:
-        if (_searchQuery.isNotEmpty) {
-          return _favoriteStations.where((station) {
-            return station.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                station.country.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                station.tags.toLowerCase().contains(_searchQuery.toLowerCase());
-          }).toList();
-        }
         return _favoriteStations;
-
-      case TabType.search:
-        return _searchResults;
     }
   }
 
@@ -67,7 +58,6 @@ class RadioProvider extends ChangeNotifier {
     if (_repository is RadioRepositoryImpl) {
       await (_repository as RadioRepositoryImpl).initialize();
     }
-
     _currentStationSubscription = _repository.currentStationStream.listen((stationId) {
       if (_currentPlayingId != stationId) {
         _currentPlayingId = stationId;
@@ -81,13 +71,21 @@ class RadioProvider extends ChangeNotifier {
 
   void _onSearchChanged() {
     final query = _searchController.text.trim();
+
+    _searchDebounceTimer?.cancel();
+
     if (_searchQuery != query) {
       _searchQuery = query;
 
-      if (_currentTab == TabType.search && query.isNotEmpty) {
-        _performSearch(query);
-      } else {
+      if (query.isEmpty) {
+        _searchResults.clear();
+        _setSearching(false);
         notifyListeners();
+      } else {
+        _searchDebounceTimer = Timer(Duration(milliseconds: 500), () {
+          _performSearch(query);
+        });
+        _setSearching(true);
       }
     }
   }
@@ -95,38 +93,46 @@ class RadioProvider extends ChangeNotifier {
   void setCurrentTab(TabType tab) {
     if (_currentTab != tab) {
       _currentTab = tab;
-
-      if (tab == TabType.search && _searchQuery.isNotEmpty) {
-        _performSearch(_searchQuery);
-      }
-
       notifyListeners();
     }
   }
 
   void clearSearch() {
+    _searchDebounceTimer?.cancel();
     _searchController.clear();
     _searchQuery = '';
     _searchResults.clear();
+    _setSearching(false);
     notifyListeners();
   }
 
   Future<void> _performSearch(String query) async {
     if (query.trim().isEmpty) {
       _searchResults.clear();
-      notifyListeners();
+      _setSearching(false);
       return;
     }
 
     try {
-      _setLoading(true);
-      _searchResults = await _repository.searchStations(query);
-      _setError(null);
+      print('Выполняется поиск: $query');
+      _setSearching(true);
+
+      final results = await _repository.searchStations(query);
+      if (_searchQuery == query) {
+        _searchResults = results;
+        _setError(null);
+        print('Найдено ${results.length} станций по запросу: $query');
+      }
     } catch (e) {
-      _setError('Ошибка поиска: $e');
-      _searchResults.clear();
+      if (_searchQuery == query) {
+        _setError('Ошибка поиска: $e');
+        _searchResults.clear();
+        print('Ошибка поиска: $e');
+      }
     } finally {
-      _setLoading(false);
+      if (_searchQuery == query) {
+        _setSearching(false);
+      }
     }
   }
 
@@ -139,13 +145,26 @@ class RadioProvider extends ChangeNotifier {
       if (isFavorite(stationId)) {
         _favoriteStations.removeWhere((s) => s.stationuuid == stationId);
       } else {
-        RadioStation? station = _stations.firstWhere(
-              (s) => s.stationuuid == stationId,
-          orElse: () => _searchResults.firstWhere(
-                (s) => s.stationuuid == stationId,
-            orElse: () => throw Exception('Station not found'),
-          ),
-        );
+        RadioStation? station;
+        if (_searchQuery.isNotEmpty && _searchResults.isNotEmpty) {
+          try {
+            station = _searchResults.firstWhere((s) => s.stationuuid == stationId);
+          } catch (e) {
+            // Станция не найдена в результатах поиска
+          }
+        }
+
+        if (station == null) {
+          try {
+            station = _stations.firstWhere((s) => s.stationuuid == stationId);
+          } catch (e) {
+            // Станция не найдена в основных станциях
+          }
+        }
+
+        if (station == null) {
+          throw Exception('Станция не найдена');
+        }
 
         _favoriteStations.add(station);
       }
@@ -161,13 +180,35 @@ class RadioProvider extends ChangeNotifier {
     try {
       _setLoading(true);
       _setError(null);
+
+      print(' Начинаем загрузку станций...');
       _stations = await _repository.getRadioStations();
-      print('Загружено ${_stations.length} станций');
+
+      if (_stations.isEmpty) {
+        _setError('Не удалось загрузить станции. Проверьте интернет-соединение.');
+        print(' Список станций пуст');
+      } else {
+        print('Загружено ${_stations.length} станций');
+      }
     } catch (e) {
-      _setError('Ошибка загрузки станций: $e');
-      print('Ошибка загрузки станций: $e');
+      final errorMessage = 'Ошибка загрузки станций: $e';
+      _setError(errorMessage);
+      print('$errorMessage');
     } finally {
       _setLoading(false);
+    }
+  }
+
+  Future<void> refreshServers() async {
+    try {
+      print('Обновление серверов...');
+      if (_repository is RadioRepositoryImpl) {
+        final repo = _repository as RadioRepositoryImpl;
+        await repo.refreshServers();
+        print('Серверы обновлены');
+      }
+    } catch (e) {
+      print('Ошибка обновления серверов: $e');
     }
   }
 
@@ -177,15 +218,28 @@ class RadioProvider extends ChangeNotifier {
         await _repository.stopStation();
         return;
       }
-
       RadioStation? station;
-      try {
-        station = _stations.firstWhere((s) => s.stationuuid == stationId);
-      } catch (e) {
+      if (_searchQuery.isNotEmpty && _searchResults.isNotEmpty) {
+        try {
+          station = _searchResults.firstWhere((s) => s.stationuuid == stationId);
+        } catch (e) {
+          // Станция не найдена в результатах поиска
+        }
+      }
+
+      if (station == null) {
+        try {
+          station = _stations.firstWhere((s) => s.stationuuid == stationId);
+        } catch (e) {
+          // Станция не найдена в основных станциях
+        }
+      }
+
+      if (station == null) {
         try {
           station = _favoriteStations.firstWhere((s) => s.stationuuid == stationId);
         } catch (e) {
-          station = _searchResults.firstWhere((s) => s.stationuuid == stationId);
+          // Станция не найдена в избранных
         }
       }
 
@@ -262,6 +316,13 @@ class RadioProvider extends ChangeNotifier {
     }
   }
 
+  void _setSearching(bool searching) {
+    if (_isSearching != searching) {
+      _isSearching = searching;
+      notifyListeners();
+    }
+  }
+
   void _setError(String? error) {
     if (_error != error) {
       _error = error;
@@ -271,6 +332,7 @@ class RadioProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     _currentStationSubscription?.cancel();
     _searchController.dispose();
     if (_repository is RadioRepositoryImpl) {
