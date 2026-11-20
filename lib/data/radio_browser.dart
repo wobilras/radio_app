@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -43,10 +42,7 @@ class RadioBrowserService {
               },
             )
             .timeout(attemptTimeout);
-      } on TimeoutException catch (error) {
-        lastFailure = error;
-        continue;
-      } on http.ClientException catch (error) {
+      } on Exception catch (error) {
         lastFailure = error;
         continue;
       }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -127,6 +128,28 @@ void main() {
       addTearDown(browser.dispose);
       await expectLater(browser.getPopularStations(), throwsFormatException);
       expect(requests, 1);
+    },
+  );
+
+  test(
+    'TLS handshake failures fall back and do not escape click analytics',
+    () async {
+      var requests = 0;
+      final browser = RadioBrowserService(
+        mirrors: mirrors,
+        client: MockClient((request) async {
+          requests++;
+          if (request.url.host == mirrors.first.host ||
+              request.url.pathSegments.contains('url')) {
+            throw const HandshakeException('test TLS failure');
+          }
+          return http.Response('[]', 200);
+        }),
+      );
+      addTearDown(browser.dispose);
+      expect(await browser.getPopularStations(), isEmpty);
+      await browser.registerStationClick('a');
+      expect(requests, 3);
     },
   );
 }
