@@ -1,30 +1,102 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:radio_app/data/models/radio_station.dart';
+import 'package:radio_app/data/repositories/radio_repository.dart';
+import 'package:radio_app/data/storage.dart';
+import 'package:radio_app/presentation/screens/main_screen.dart';
+import 'package:radio_app/presentation/widgets/radio_station_tile.dart';
+import 'package:radio_app/providers/radio_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:radio_app/main.dart';
+class FakeRadioRepository implements RadioRepository {
+  final selected = StreamController<String?>.broadcast();
+  final stations = [
+    RadioStation(
+        stationuuid: 'one',
+        name: 'Station One',
+        url: 'https://example.test/one'),
+    RadioStation(
+        stationuuid: 'two',
+        name: 'Station Two',
+        url: 'https://example.test/two'),
+  ];
+  String? _currentStationId;
+
+  @override
+  String? get currentStationId => _currentStationId;
+
+  @override
+  Stream<String?> get currentStationStream => selected.stream;
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<List<RadioStation>> getRadioStations() async => stations;
+
+  @override
+  Future<List<RadioStation>> searchStations(String query) async =>
+      stations.where((station) => station.name.contains(query)).toList();
+
+  @override
+  Future<List<RadioStation>> getStationsByCountry(String countryCode) async =>
+      [];
+
+  @override
+  Future<void> refreshServers() async {}
+
+  @override
+  Future<void> playStation(RadioStation station) async {
+    _currentStationId = station.stationuuid;
+    selected.add(_currentStationId);
+  }
+
+  @override
+  Future<void> stopStation() async {
+    _currentStationId = null;
+    selected.add(null);
+  }
+
+  @override
+  void dispose() => unawaited(selected.close());
+}
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('Loads stations, plays the selected station and saves a favorite',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final repository = FakeRadioRepository();
+    final storage = StorageService();
+    await tester.pumpWidget(ChangeNotifierProvider(
+      create: (_) => RadioProvider(repository: repository, storage: storage),
+      child: const MaterialApp(home: MainScreen()),
+    ));
+    await tester.pumpAndSettle();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.text('Station One'), findsOneWidget);
+    expect(find.text('Station Two'), findsOneWidget);
+    await tester.tap(find.text('Station Two'));
+    await tester.pumpAndSettle();
+    expect(repository.currentStationId, 'two');
+    expect(
+        tester
+            .widget<RadioStationTile>(find.byType(RadioStationTile).last)
+            .isPlaying,
+        isTrue);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tester.tap(find.descendant(
+      of: find.byType(RadioStationTile).last,
+      matching: find.byIcon(Icons.favorite_border),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Избранное'));
+    await tester.pumpAndSettle();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Station Two'), findsOneWidget);
+    expect(find.text('Station One'), findsNothing);
+    expect((await storage.loadFavoriteStations()).single.stationuuid, 'two');
   });
 }
