@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../models/radio_station.dart';
 import '../radio_browser.dart';
 import '../radio_player.dart';
@@ -197,7 +199,9 @@ class RadioRepositoryImpl implements RadioRepository {
 
   @override
   void dispose() {
-    _audioService.dispose();
+    unawaited(_audioService.dispose().catchError((Object error) {
+      print('Ошибка освобождения плеера: $error');
+    }));
     _browserService.dispose();
   }
 }

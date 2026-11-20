@@ -2,17 +2,20 @@ import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 
 class AudioPlayerService {
-  static final AudioPlayerService _instance = AudioPlayerService._internal();
-  factory AudioPlayerService() => _instance;
-  AudioPlayerService._internal();
+  AudioPlayerService({AudioPlayer? player}) : _player = player ?? AudioPlayer();
 
-  final AudioPlayer _player = AudioPlayer();
+  final AudioPlayer _player;
+  StreamSubscription<PlayerState>? _stateSubscription;
+  StreamSubscription<String>? _logSubscription;
+  Future<void>? _closing;
 
   String? _currentStationId;
   String? _currentStationName;
 
-  final StreamController<PlayerState> _stateController = StreamController<PlayerState>.broadcast();
-  final StreamController<String?> _currentStationController = StreamController<String?>.broadcast();
+  final StreamController<PlayerState> _stateController =
+      StreamController<PlayerState>.broadcast();
+  final StreamController<String?> _currentStationController =
+      StreamController<String?>.broadcast();
 
   Stream<PlayerState> get stateStream => _stateController.stream;
   Stream<String?> get currentStationStream => _currentStationController.stream;
@@ -23,21 +26,23 @@ class AudioPlayerService {
   bool get isPlaying => _player.state == PlayerState.playing;
 
   Future<void> initialize() async {
-    print('Инициализация Audio Player Service...');
+    if (_stateSubscription != null || _closing != null) return;
 
-    _player.onPlayerStateChanged.listen((PlayerState state) {
+    _stateSubscription =
+        _player.onPlayerStateChanged.listen((PlayerState state) {
       print('Состояние плеера изменено: $state');
       _stateController.add(state);
     });
 
-    _player.onLog.listen((String message) {
+    _logSubscription = _player.onLog.listen((String message) {
       print('AudioPlayer Log: $message');
     });
 
     print('Audio Player Service инициализирован успешно');
   }
 
-  Future<void> playStation(String stationId, String stationName, String streamUrl) async {
+  Future<void> playStation(
+      String stationId, String stationName, String streamUrl) async {
     try {
       print('Воспроизведение станции: $stationName ($stationId)');
       print('Stream URL: $streamUrl');
@@ -104,10 +109,16 @@ class AudioPlayerService {
     }
   }
 
-  void dispose() {
-    _player.dispose();
-    _stateController.close();
-    _currentStationController.close();
-    print('Audio Player Service освобожден');
+  Future<void> dispose() => _closing ??= _dispose();
+
+  Future<void> _dispose() async {
+    await _stateSubscription?.cancel();
+    await _logSubscription?.cancel();
+    try {
+      await _player.dispose();
+    } finally {
+      await _stateController.close();
+      await _currentStationController.close();
+    }
   }
 }
