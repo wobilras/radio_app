@@ -28,7 +28,8 @@ class RadioRepositoryImpl implements RadioRepository {
   final AudioPlayerService _audioService;
 
   @override
-  Stream<String?> get currentStationStream => _audioService.currentStationStream;
+  Stream<String?> get currentStationStream =>
+      _audioService.currentStationStream;
 
   @override
   String? get currentStationId => _audioService.currentStationId;
@@ -46,30 +47,11 @@ class RadioRepositoryImpl implements RadioRepository {
       final validStations = stations.where((station) {
         return station.url.isNotEmpty &&
             station.name.isNotEmpty &&
-            (station.url.startsWith('http://') || station.url.startsWith('https://'));
+            (station.url.startsWith('http://') ||
+                station.url.startsWith('https://'));
       }).toList();
 
-      if (validStations.isNotEmpty) {
-        print('Загружено ${validStations.length} станций');
-        return validStations;
-      } else {
-        print('Нет валидных станций, пробуем обновить серверы...');
-        await _browserService.refreshServers();
-        final retryStations = await _browserService.getPopularStations(limit: 100);
-        final retryValidStations = retryStations.where((station) {
-          return station.url.isNotEmpty &&
-              station.name.isNotEmpty &&
-              (station.url.startsWith('http://') || station.url.startsWith('https://'));
-        }).toList();
-
-        if (retryValidStations.isNotEmpty) {
-          print('После обновления серверов загружено ${retryValidStations.length} станций');
-          return retryValidStations;
-        } else {
-          print('Используем резервные данные');
-          return _getFallbackStations();
-        }
-      }
+      return validStations.isEmpty ? _getFallbackStations() : validStations;
     } catch (e) {
       print('Ошибка загрузки станций: $e');
       return _getFallbackStations();
@@ -93,7 +75,8 @@ class RadioRepositoryImpl implements RadioRepository {
       final validStations = stations.where((station) {
         return station.url.isNotEmpty &&
             station.name.isNotEmpty &&
-            (station.url.startsWith('http://') || station.url.startsWith('https://'));
+            (station.url.startsWith('http://') ||
+                station.url.startsWith('https://'));
       }).toList();
 
       print('Найдено ${validStations.length} станций по запросу: "$query"');
@@ -109,15 +92,21 @@ class RadioRepositoryImpl implements RadioRepository {
     try {
       print('Загрузка станций для страны: $countryCode');
 
-      final stations = await _browserService.getStationsByCountry(countryCode, limit: 50);
+      final stations = await _browserService.getStationsByCountry(
+        countryCode,
+        limit: 50,
+      );
 
       final validStations = stations.where((station) {
         return station.url.isNotEmpty &&
             station.name.isNotEmpty &&
-            (station.url.startsWith('http://') || station.url.startsWith('https://'));
+            (station.url.startsWith('http://') ||
+                station.url.startsWith('https://'));
       }).toList();
 
-      print('Загружено ${validStations.length} станций для страны $countryCode');
+      print(
+        'Загружено ${validStations.length} станций для страны $countryCode',
+      );
       return validStations;
     } catch (e) {
       print('Ошибка загрузки станций по стране: $e');
@@ -206,9 +195,11 @@ class RadioRepositoryImpl implements RadioRepository {
 
   @override
   void dispose() {
-    unawaited(_audioService.dispose().catchError((Object error) {
-      print('Ошибка освобождения плеера: $error');
-    }));
+    unawaited(
+      _audioService.dispose().catchError((Object error) {
+        print('Ошибка освобождения плеера: $error');
+      }),
+    );
     _browserService.dispose();
   }
 }
