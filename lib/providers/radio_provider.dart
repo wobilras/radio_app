@@ -25,6 +25,7 @@ class RadioProvider extends ChangeNotifier {
   String? _error;
   TabType _currentTab = TabType.stations;
   String _searchQuery = '';
+  int _searchRequest = 0;
   final TextEditingController _searchController = TextEditingController();
   StreamSubscription? _currentStationSubscription;
   Timer? _searchDebounceTimer;
@@ -91,22 +92,18 @@ class RadioProvider extends ChangeNotifier {
 
   void _onSearchChanged() {
     final query = _searchController.text.trim();
+    if (_searchQuery == query) return;
 
     _searchDebounceTimer?.cancel();
-
-    if (_searchQuery != query) {
-      _searchQuery = query;
-
-      if (query.isEmpty) {
-        _searchResults.clear();
-        _setSearching(false);
-        _publish();
-      } else {
-        _searchDebounceTimer = Timer(Duration(milliseconds: 500), () {
-          _performSearch(query);
-        });
-        _setSearching(true);
-      }
+    final request = ++_searchRequest;
+    _searchQuery = query;
+    _searchResults = [];
+    _isSearching = query.isNotEmpty;
+    _publish();
+    if (query.isNotEmpty) {
+      _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+        unawaited(_performSearch(query, request));
+      });
     }
   }
 
@@ -117,42 +114,21 @@ class RadioProvider extends ChangeNotifier {
     }
   }
 
-  void clearSearch() {
-    _searchDebounceTimer?.cancel();
-    _searchController.clear();
-    _searchQuery = '';
-    _searchResults.clear();
-    _setSearching(false);
-    _publish();
-  }
+  void clearSearch() => _searchController.clear();
 
-  Future<void> _performSearch(String query) async {
-    if (query.trim().isEmpty) {
-      _searchResults.clear();
-      _setSearching(false);
-      return;
-    }
-
+  Future<void> _performSearch(String query, int request) async {
     try {
-      print('Выполняется поиск: $query');
-      _setSearching(true);
-
       final results = await _repository.searchStations(query);
-      if (!_disposed && _searchQuery == query) {
+      if (!_disposed && request == _searchRequest) {
         _searchResults = results;
         _setError(null);
-        print('Найдено ${results.length} станций по запросу: $query');
       }
-    } catch (e) {
-      if (!_disposed && _searchQuery == query) {
-        _setError('Ошибка поиска: $e');
-        _searchResults.clear();
-        print('Ошибка поиска: $e');
+    } catch (_) {
+      if (!_disposed && request == _searchRequest) {
+        _setError('Не удалось выполнить поиск станций.');
       }
     } finally {
-      if (!_disposed && _searchQuery == query) {
-        _setSearching(false);
-      }
+      if (request == _searchRequest) _setSearching(false);
     }
   }
 

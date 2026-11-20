@@ -15,15 +15,18 @@ class FakeRadioRepository implements RadioRepository {
   final selected = StreamController<String?>.broadcast();
   Completer<void>? startup;
   Completer<List<RadioStation>>? catalog;
+  Future<List<RadioStation>> Function(String)? onSearch;
   final stations = [
     RadioStation(
-        stationuuid: 'one',
-        name: 'Station One',
-        url: 'https://example.test/one'),
+      stationuuid: 'one',
+      name: 'Station One',
+      url: 'https://example.test/one',
+    ),
     RadioStation(
-        stationuuid: 'two',
-        name: 'Station Two',
-        url: 'https://example.test/two'),
+      stationuuid: 'two',
+      name: 'Station Two',
+      url: 'https://example.test/two',
+    ),
   ];
   String? _currentStationId;
 
@@ -43,8 +46,11 @@ class FakeRadioRepository implements RadioRepository {
   }
 
   @override
-  Future<List<RadioStation>> searchStations(String query) async =>
-      stations.where((station) => station.name.contains(query)).toList();
+  Future<List<RadioStation>> searchStations(String query) async {
+    final search = onSearch;
+    if (search != null) return search(query);
+    return stations.where((station) => station.name.contains(query)).toList();
+  }
 
   @override
   Future<List<RadioStation>> getStationsByCountry(String countryCode) async =>
@@ -70,12 +76,15 @@ class FakeRadioRepository implements RadioRepository {
 }
 
 void main() {
-  testWidgets('Does not publish or attach listeners after disposal',
-      (tester) async {
+  testWidgets('Does not publish or attach listeners after disposal', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     final repository = FakeRadioRepository()..startup = Completer<void>();
-    final provider =
-        RadioProvider(repository: repository, storage: StorageService());
+    final provider = RadioProvider(
+      repository: repository,
+      storage: StorageService(),
+    );
     provider.dispose();
     repository.startup!.complete();
     await tester.pump();
@@ -94,38 +103,86 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
   });
-  testWidgets('Loads stations, plays the selected station and saves a favorite',
-      (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    final repository = FakeRadioRepository();
-    final storage = StorageService();
-    await tester.pumpWidget(ChangeNotifierProvider(
-      create: (_) => RadioProvider(repository: repository, storage: storage),
-      child: const MaterialApp(home: MainScreen()),
-    ));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'Loads stations, plays the selected station and saves a favorite',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final repository = FakeRadioRepository();
+      final storage = StorageService();
+      await tester.pumpWidget(
+        ChangeNotifierProvider(
+          create: (_) =>
+              RadioProvider(repository: repository, storage: storage),
+          child: const MaterialApp(home: MainScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Station One'), findsOneWidget);
-    expect(find.text('Station Two'), findsOneWidget);
-    await tester.tap(find.text('Station Two'));
-    await tester.pumpAndSettle();
-    expect(repository.currentStationId, 'two');
-    expect(
+      expect(find.text('Station One'), findsOneWidget);
+      expect(find.text('Station Two'), findsOneWidget);
+      await tester.tap(find.text('Station Two'));
+      await tester.pumpAndSettle();
+      expect(repository.currentStationId, 'two');
+      expect(
         tester
             .widget<RadioStationTile>(find.byType(RadioStationTile).last)
             .isPlaying,
-        isTrue);
+        isTrue,
+      );
 
-    await tester.tap(find.descendant(
-      of: find.byType(RadioStationTile).last,
-      matching: find.byIcon(Icons.favorite_border),
-    ));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Избранное'));
-    await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(RadioStationTile).last,
+          matching: find.byIcon(Icons.favorite_border),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Избранное'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Station Two'), findsOneWidget);
-    expect(find.text('Station One'), findsNothing);
-    expect((await storage.loadFavoriteStations()).single.stationuuid, 'two');
-  });
+      expect(find.text('Station Two'), findsOneWidget);
+      expect(find.text('Station One'), findsNothing);
+      expect((await storage.loadFavoriteStations()).single.stationuuid, 'two');
+    },
+  );
+
+  testWidgets(
+    'Search ignores caret changes and results from an earlier identical query',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final requests = <Completer<List<RadioStation>>>[];
+      final repository = FakeRadioRepository()
+        ..onSearch = (_) {
+          final pending = Completer<List<RadioStation>>();
+          requests.add(pending);
+          return pending.future;
+        };
+      final provider = RadioProvider(
+        repository: repository,
+        storage: StorageService(),
+      );
+      addTearDown(provider.dispose);
+      final input = provider.searchController;
+      input.text = 'a';
+      input.selection = const TextSelection.collapsed(offset: 1);
+      input.text = 'a ';
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(requests, hasLength(1));
+      input.text = 'b';
+      await tester.pump(const Duration(milliseconds: 500));
+      input.text = 'a';
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(requests, hasLength(3));
+
+      requests[2].complete([repository.stations.last]);
+      await tester.pump();
+      requests[0].complete([repository.stations.first]);
+      requests[1].complete([]);
+      await tester.pump();
+      expect(provider.searchResults.single.stationuuid, 'two');
+      expect(provider.isSearching, isFalse);
+      provider.clearSearch();
+      expect(provider.searchResults, isEmpty);
+    },
+  );
 }
