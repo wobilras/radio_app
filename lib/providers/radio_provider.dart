@@ -13,6 +13,7 @@ class RadioProvider extends ChangeNotifier {
 
   List<RadioStation> _stations = [];
   List<RadioStation> _favoriteStations = [];
+  Future<void> _favoriteChanges = Future.value();
   List<RadioStation> _searchResults = [];
   bool _isLoading = false;
   bool _isSearching = false;
@@ -144,19 +145,29 @@ class RadioProvider extends ChangeNotifier {
     return _favoriteStations.any((station) => station.stationuuid == stationId);
   }
 
-  Future<void> toggleFavorite(RadioStation station) async {
-    try {
+  Future<void> toggleFavorite(RadioStation station) {
+    return _queueFavoriteChange(() async {
       final id = station.stationuuid;
+      final updated = [..._favoriteStations];
       if (isFavorite(id)) {
-        _favoriteStations.removeWhere((item) => item.stationuuid == id);
+        updated.removeWhere((item) => item.stationuuid == id);
       } else {
-        _favoriteStations.add(station);
+        updated.add(station);
       }
-      await _saveFavoriteStations();
-      notifyListeners();
-    } catch (e) {
-      print('Ошибка при изменении избранного: $e');
-    }
+      await _storage.saveFavoriteStations(updated);
+      _favoriteStations = updated;
+    });
+  }
+
+  Future<void> _queueFavoriteChange(Future<void> Function() change) {
+    return _favoriteChanges = _favoriteChanges.then((_) async {
+      try {
+        await change();
+        notifyListeners();
+      } catch (_) {
+        _setError('Не удалось сохранить избранное.');
+      }
+    });
   }
 
   Future<void> loadStations() async {
@@ -166,6 +177,11 @@ class RadioProvider extends ChangeNotifier {
 
       print(' Начинаем загрузку станций...');
       _stations = await _repository.getRadioStations();
+      if (_stations.isNotEmpty) {
+        await _queueFavoriteChange(() async {
+          _favoriteStations = await _storage.resolveFavorites(_stations);
+        });
+      }
 
       if (_stations.isEmpty) {
         _setError(
@@ -223,15 +239,6 @@ class RadioProvider extends ChangeNotifier {
     } catch (e) {
       print('Ошибка загрузки избранных станций: $e');
       _favoriteStations = [];
-    }
-  }
-
-  Future<void> _saveFavoriteStations() async {
-    try {
-      await _storage.saveFavoriteStations(_favoriteStations);
-      print('Избранные станции сохранены: ${_favoriteStations.length}');
-    } catch (e) {
-      print('Ошибка сохранения избранных станций: $e');
     }
   }
 
