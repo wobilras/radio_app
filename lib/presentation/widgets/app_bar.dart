@@ -79,6 +79,7 @@ class _MainAppBarState extends State<MainAppBar> {
                 ),
                 child: TextField(
                   controller: widget.searchController,
+                  enabled: widget.currentTab == TabType.stations,
                   decoration: InputDecoration(
                     hintText: 'Поиск радиостанций...',
                     hintStyle: TextStyle(color: Colors.grey[500], fontSize: 16),

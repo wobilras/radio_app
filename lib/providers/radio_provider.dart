@@ -18,6 +18,7 @@ class RadioProvider extends ChangeNotifier {
   List<RadioStation> _searchResults = [];
   bool _disposed = false;
   bool _isLoading = false;
+  Future<void>? _catalogLoad;
   bool _isSearching = false;
   String? _currentPlayingId;
   String? _pendingPlaybackId;
@@ -37,7 +38,8 @@ class RadioProvider extends ChangeNotifier {
   List<RadioStation> get favoriteStations =>
       List.unmodifiable(_favoriteStations);
   List<RadioStation> get searchResults => List.unmodifiable(_searchResults);
-  bool get isLoading => _isLoading;
+  bool get isLoading =>
+      _currentTab == TabType.stations && _searchQuery.isEmpty && _isLoading;
   bool get isSearching => _isSearching;
   String? get currentPlayingId => _currentPlayingId;
   String? get catalogError =>
@@ -55,18 +57,8 @@ class RadioProvider extends ChangeNotifier {
   TextEditingController get searchController => _searchController;
 
   List<RadioStation> get filteredStations {
-    if (_searchQuery.isNotEmpty && _searchResults.isNotEmpty) {
-      return searchResults;
-    }
-    if (_searchQuery.isNotEmpty && _searchResults.isEmpty && !_isSearching) {
-      return [];
-    }
-    switch (_currentTab) {
-      case TabType.stations:
-        return stations;
-      case TabType.favorites:
-        return favoriteStations;
-    }
+    if (_currentTab == TabType.favorites) return favoriteStations;
+    return _searchQuery.isEmpty ? stations : searchResults;
   }
 
   RadioProvider({
@@ -124,13 +116,22 @@ class RadioProvider extends ChangeNotifier {
   void setCurrentTab(TabType tab) {
     if (_currentTab != tab) {
       _currentTab = tab;
-      _publish();
+      if (tab == TabType.favorites && _searchController.text.isNotEmpty) {
+        clearSearch();
+      } else {
+        _publish();
+      }
     }
   }
 
   void clearSearch() => _searchController.clear();
 
   Future<void> reloadActive() async {
+    if (_currentTab == TabType.favorites) {
+      await _favoriteChanges;
+      if (!_disposed) await _loadFavoriteStations();
+      return;
+    }
     final query = _searchQuery;
     if (query.isEmpty) return loadStations();
 
@@ -196,7 +197,12 @@ class RadioProvider extends ChangeNotifier {
     });
   }
 
-  Future<void> loadStations() async {
+  Future<void> loadStations() =>
+      _catalogLoad ??= _loadCatalog().whenComplete(() {
+        _catalogLoad = null;
+      });
+
+  Future<void> _loadCatalog() async {
     _catalogError = null;
     _setLoading(true);
     try {
@@ -272,7 +278,11 @@ class RadioProvider extends ChangeNotifier {
 
   Future<void> _loadFavoriteStations() async {
     try {
-      _favoriteStations = await _storage.loadFavoriteStations();
+      final favorites = await _storage.loadFavoriteStations();
+      if (_disposed) return;
+      _favoriteStations = favorites;
+      _favoritesError = null;
+      _publish();
       print('Загружено ${_favoriteStations.length} избранных станций');
     } catch (e) {
       print('Ошибка загрузки избранных станций: $e');

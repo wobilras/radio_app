@@ -15,6 +15,7 @@ class FakeRadioRepository implements RadioRepository {
   final selected = StreamController<String?>.broadcast();
   Completer<void>? startup;
   Completer<List<RadioStation>>? catalog;
+  int catalogLoads = 0;
   Future<List<RadioStation>> Function(String)? onSearch;
   Future<void> Function(RadioStation)? onPlay;
   final stations = [
@@ -42,6 +43,7 @@ class FakeRadioRepository implements RadioRepository {
 
   @override
   Future<List<RadioStation>> getRadioStations() async {
+    catalogLoads++;
     final pending = catalog;
     return pending == null ? stations : await pending.future;
   }
@@ -232,4 +234,39 @@ void main() {
     expect(provider.searchResults, isEmpty);
     expect(searches, ['jazz', 'jazz']);
   });
+
+  testWidgets(
+    'Favorites stay visible while catalog loads and stale search completes',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final repository = FakeRadioRepository()
+        ..catalog = Completer<List<RadioStation>>();
+      final firstSearch = Completer<List<RadioStation>>();
+      repository.onSearch = (_) => firstSearch.future;
+      final storage = StorageService();
+      await storage.saveFavoriteStations([repository.stations.last]);
+      final provider = RadioProvider(repository: repository, storage: storage);
+      addTearDown(provider.dispose);
+      await tester.pump();
+      expect(repository.catalogLoads, 1);
+
+      provider.searchController.text = 'a';
+      await tester.pump(const Duration(milliseconds: 500));
+      provider.setCurrentTab(TabType.favorites);
+      firstSearch.complete([repository.stations.first]);
+      await tester.pump();
+      expect(provider.isLoading, isFalse);
+      expect(provider.searchQuery, isEmpty);
+      expect(provider.filteredStations.single.stationuuid, 'two');
+      await provider.reloadActive();
+      expect(repository.catalogLoads, 1);
+
+      provider.setCurrentTab(TabType.stations);
+      final retry = provider.loadStations();
+      expect(repository.catalogLoads, 1);
+      repository.catalog!.complete(repository.stations);
+      await retry;
+      expect(provider.filteredStations, hasLength(2));
+    },
+  );
 }
