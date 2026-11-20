@@ -72,8 +72,23 @@ class RadioBrowserService {
     Map<String, String> query,
   ) async {
     final response = await _request(path, query: query);
-    final records = jsonDecode(utf8.decode(response.bodyBytes)) as List;
-    return records.map((record) => RadioStation.fromJson(record)).toList();
+    final records = jsonDecode(utf8.decode(response.bodyBytes));
+    if (records is! List) {
+      throw const FormatException('Expected a station list');
+    }
+    final stations = <String, RadioStation>{};
+    for (final record in records.whereType<Map<String, dynamic>>()) {
+      try {
+        final station = RadioStation.fromJson(record);
+        stations.putIfAbsent(station.stationuuid, () => station);
+      } on FormatException {
+        // Keep the remaining stations when an individual record is invalid.
+      }
+    }
+    if (records.isNotEmpty && stations.isEmpty) {
+      throw const FormatException('Response has no valid stations');
+    }
+    return stations.values.toList();
   }
 
   Future<List<RadioStation>> getPopularStations({int limit = 50}) =>

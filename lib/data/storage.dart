@@ -14,7 +14,8 @@ class StorageService {
   }
 
   Future<List<RadioStation>> resolveFavorites(
-      Iterable<RadioStation> candidates) async {
+    Iterable<RadioStation> candidates,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     final favorites = await _read(prefs);
     var changed = false;
@@ -59,7 +60,7 @@ class StorageService {
           if (station.stationuuid.isNotEmpty) {
             favorites[station.stationuuid] = station;
           }
-        } on TypeError {
+        } on FormatException {
           // Other entries are still recoverable.
         }
       }

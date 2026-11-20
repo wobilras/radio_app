@@ -44,14 +44,8 @@ class RadioRepositoryImpl implements RadioRepository {
     try {
       print('Загрузка популярных радиостанций...');
       final stations = await _browserService.getPopularStations(limit: 100);
-      final validStations = stations.where((station) {
-        return station.url.isNotEmpty &&
-            station.name.isNotEmpty &&
-            (station.url.startsWith('http://') ||
-                station.url.startsWith('https://'));
-      }).toList();
 
-      return validStations.isEmpty ? _getFallbackStations() : validStations;
+      return stations.isEmpty ? _getFallbackStations() : stations;
     } catch (e) {
       print('Ошибка загрузки станций: $e');
       return _getFallbackStations();
@@ -72,15 +66,8 @@ class RadioRepositoryImpl implements RadioRepository {
         limit: 50,
       );
 
-      final validStations = stations.where((station) {
-        return station.url.isNotEmpty &&
-            station.name.isNotEmpty &&
-            (station.url.startsWith('http://') ||
-                station.url.startsWith('https://'));
-      }).toList();
-
-      print('Найдено ${validStations.length} станций по запросу: "$query"');
-      return validStations;
+      print('Найдено ${stations.length} станций по запросу: "$query"');
+      return stations;
     } catch (e) {
       print('Ошибка поиска станций: $e');
       return [];
@@ -97,17 +84,8 @@ class RadioRepositoryImpl implements RadioRepository {
         limit: 50,
       );
 
-      final validStations = stations.where((station) {
-        return station.url.isNotEmpty &&
-            station.name.isNotEmpty &&
-            (station.url.startsWith('http://') ||
-                station.url.startsWith('https://'));
-      }).toList();
-
-      print(
-        'Загружено ${validStations.length} станций для страны $countryCode',
-      );
-      return validStations;
+      print('Загружено ${stations.length} станций для страны $countryCode');
+      return stations;
     } catch (e) {
       print('Ошибка загрузки станций по стране: $e');
       return [];

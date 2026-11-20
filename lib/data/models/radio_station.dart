@@ -30,36 +30,62 @@ class RadioStation {
   });
 
   factory RadioStation.fromJson(Map<String, dynamic> json) {
+    String text(String key) {
+      final value = json[key];
+      return value is String ? value.trim() : '';
+    }
+
+    int number(String key) {
+      final value = json[key];
+      if (value is int) return value;
+      return value is String ? int.tryParse(value) ?? 0 : 0;
+    }
+
+    String? streamUrl(String key) {
+      final uri = Uri.tryParse(text(key));
+      if (uri == null ||
+          !{'http', 'https'}.contains(uri.scheme) ||
+          uri.host.isEmpty)
+        return null;
+      return uri.toString();
+    }
+
+    final id = text('stationuuid');
+    final url = streamUrl('url_resolved') ?? streamUrl('url');
+    if (id.isEmpty || url == null) {
+      throw const FormatException('Station is missing an ID or playable URL');
+    }
+    final name = text('name');
     return RadioStation(
-      stationuuid: json['stationuuid'] ?? '',
-      name: json['name'] ?? 'Неизвестная станция',
-      url: json['url_resolved'] ?? json['url'] ?? '',
-      favicon: json['favicon'] ?? '',
-      country: json['country'] ?? '',
-      countrycode: json['countrycode'] ?? '',
-      language: json['language'] ?? '',
-      tags: json['tags'] ?? '',
-      votes: json['votes'] ?? 0,
-      clickcount: json['clickcount'] ?? 0,
-      codec: json['codec'] ?? '',
-      bitrate: json['bitrate'] ?? 0,
+      stationuuid: id,
+      name: name.isEmpty ? 'Радиостанция' : name,
+      url: url,
+      favicon: text('favicon'),
+      country: text('country'),
+      countrycode: text('countrycode'),
+      language: text('language'),
+      tags: text('tags'),
+      votes: number('votes'),
+      clickcount: number('clickcount'),
+      codec: text('codec'),
+      bitrate: number('bitrate'),
     );
   }
 
   Map<String, Object> toJson() => {
-        'stationuuid': stationuuid,
-        'name': name,
-        'url': url,
-        'favicon': favicon,
-        'country': country,
-        'countrycode': countrycode,
-        'language': language,
-        'tags': tags,
-        'votes': votes,
-        'clickcount': clickcount,
-        'codec': codec,
-        'bitrate': bitrate,
-      };
+    'stationuuid': stationuuid,
+    'name': name,
+    'url': url,
+    'favicon': favicon,
+    'country': country,
+    'countrycode': countrycode,
+    'language': language,
+    'tags': tags,
+    'votes': votes,
+    'clickcount': clickcount,
+    'codec': codec,
+    'bitrate': bitrate,
+  };
 
   RadioStation copyWith({
     String? stationuuid,

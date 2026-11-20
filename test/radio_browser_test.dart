@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -77,4 +78,55 @@ void main() {
     expect(await browser.getPopularStations(), isEmpty);
     expect(calls, 2);
   });
+
+  test(
+    'decodes UTF-8 and keeps valid unique stations from a mixed response',
+    () async {
+      final entry = {
+        'stationuuid': 'one',
+        'name': '\u0420\u0430\u0434\u0438\u043e',
+        'url_resolved': '',
+        'url': 'https://example.test/live',
+        'bitrate': '128',
+      };
+      final browser = RadioBrowserService(
+        mirrors: mirrors,
+        client: MockClient(
+          (_) async => http.Response.bytes(
+            utf8.encode(
+              jsonEncode([
+                42,
+                {...entry, 'stationuuid': ''},
+                entry,
+                entry,
+              ]),
+            ),
+            200,
+          ),
+        ),
+      );
+      addTearDown(browser.dispose);
+      final result = (await browser.getPopularStations()).single;
+      expect(result.name, '\u0420\u0430\u0434\u0438\u043e');
+      expect(result.url, entry['url']);
+      expect(result.bitrate, 128);
+    },
+  );
+
+  test(
+    'reports an invalid response shape without attempting another mirror',
+    () async {
+      var requests = 0;
+      final browser = RadioBrowserService(
+        mirrors: mirrors,
+        client: MockClient((_) async {
+          requests++;
+          return http.Response('{}', 200);
+        }),
+      );
+      addTearDown(browser.dispose);
+      await expectLater(browser.getPopularStations(), throwsFormatException);
+      expect(requests, 1);
+    },
+  );
 }
