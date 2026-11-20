@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../providers/radio_provider.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/radio_station_tile.dart';
@@ -50,10 +51,7 @@ class MainScreen extends StatelessWidget {
             SizedBox(height: 16),
             Text(
               _getLoadingText(radioProvider.currentTab),
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
           ],
         ),
@@ -79,10 +77,7 @@ class MainScreen extends StatelessWidget {
                 SizedBox(width: 12),
                 Text(
                   'Поиск станций...',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 ),
               ],
             ),
@@ -92,45 +87,78 @@ class MainScreen extends StatelessWidget {
       );
     }
 
-    return content;
+    final catalogError = radioProvider.catalogError;
+    final favoritesError = radioProvider.favoritesError;
+    final playback = radioProvider.playbackFailure;
+    return Column(
+      children: [
+        if (catalogError != null || radioProvider.hasFallbackStations)
+          _StatusMessage(
+            message: catalogError ?? 'Показаны резервные станции.',
+            onRetry: radioProvider.reloadActive,
+          ),
+        if (favoritesError != null) _StatusMessage(message: favoritesError),
+        if (playback != null)
+          _StatusMessage(message: playback.message, onRetry: playback.retry),
+        Expanded(child: content),
+      ],
+    );
   }
 
-    Widget _buildStationsList(BuildContext context, RadioProvider radioProvider) {
-      if (radioProvider.error != null) {
-        return Center(
-          child: Padding(
-            padding: EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 64,
-                  color: Colors.red[400],
+  Widget _buildStationsList(BuildContext context, RadioProvider radioProvider) {
+    final stations = radioProvider.filteredStations;
+
+    if (stations.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                _getEmptyIcon(
+                  radioProvider.currentTab,
+                  radioProvider.searchQuery,
                 ),
-                SizedBox(height: 16),
-                Text(
-                  radioProvider.error!,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.red[600],
+                size: 64,
+                color: Colors.grey[400],
+              ),
+              SizedBox(height: 16),
+              Text(
+                _getEmptyMessage(
+                  radioProvider.currentTab,
+                  radioProvider.searchQuery,
+                ),
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                textAlign: TextAlign.center,
+              ),
+              if (_shouldShowSubMessage(
+                radioProvider.currentTab,
+                radioProvider.searchQuery,
+              ))
+                Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    _getEmptySubMessage(radioProvider.currentTab),
+                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
                 ),
-                SizedBox(height: 24),
+              SizedBox(height: 24),
+              if (radioProvider.searchQuery.isNotEmpty)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     ElevatedButton.icon(
-                      onPressed: () => radioProvider.loadStations(),
-                      icon: Icon(Icons.refresh),
-                      label: Text('Повторить'),
+                      onPressed: () => radioProvider.clearSearch(),
+                      icon: Icon(Icons.clear),
+                      label: Text('Очистить поиск'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
+                        backgroundColor: Colors.grey,
                         foregroundColor: Colors.white,
                       ),
                     ),
-                    SizedBox(width: 16),
+                    SizedBox(width: 12),
                     ElevatedButton.icon(
                       onPressed: () => radioProvider.refreshServers(),
                       icon: Icon(Icons.dns),
@@ -140,192 +168,138 @@ class MainScreen extends StatelessWidget {
                         foregroundColor: Colors.white,
                       ),
                     ),
-                    if (radioProvider.currentPlayingId != null) ...[
-                      SizedBox(width: 16),
-                      ElevatedButton.icon(
-                        onPressed: () => radioProvider.stopCurrentStation(),
-                        icon: Icon(Icons.stop),
-                        label: Text('Остановить'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                        ),
+                  ],
+                )
+              else
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: radioProvider.reloadActive,
+                      icon: Icon(Icons.refresh),
+                      label: Text('Обновить'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
                       ),
-                    ],
+                    ),
+                    SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: () => radioProvider.refreshServers(),
+                      icon: Icon(Icons.dns),
+                      label: Text('Обновить серверы'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
                   ],
                 ),
-              ],
-            ),
+            ],
           ),
-        );
-      }
-
-      final stations = radioProvider.filteredStations;
-
-      if (stations.isEmpty) {
-        return Center(
-          child: Padding(
-            padding: EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  _getEmptyIcon(radioProvider.currentTab, radioProvider.searchQuery),
-                  size: 64,
-                  color: Colors.grey[400],
-                ),
-                SizedBox(height: 16),
-                Text(
-                  _getEmptyMessage(radioProvider.currentTab, radioProvider.searchQuery),
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey[600],
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                if (_shouldShowSubMessage(radioProvider.currentTab, radioProvider.searchQuery))
-                  Padding(
-                    padding: EdgeInsets.only(top: 8),
-                    child: Text(
-                      _getEmptySubMessage(radioProvider.currentTab),
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[500],
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                SizedBox(height: 24),
-                if (radioProvider.searchQuery.isNotEmpty)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () => radioProvider.clearSearch(),
-                        icon: Icon(Icons.clear),
-                        label: Text('Очистить поиск'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.grey,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      ElevatedButton.icon(
-                        onPressed: () => radioProvider.refreshServers(),
-                        icon: Icon(Icons.dns),
-                        label: Text('Обновить серверы'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () => radioProvider.loadStations(),
-                        icon: Icon(Icons.refresh),
-                        label: Text('Обновить'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      ElevatedButton.icon(
-                        onPressed: () => radioProvider.refreshServers(),
-                        icon: Icon(Icons.dns),
-                        label: Text('Обновить серверы'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-          ),
-        );
-      }
-
-      return RefreshIndicator(
-        onRefresh: () => radioProvider.loadStations(),
-        child: GridView.builder(
-          physics: AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.all(16.0),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: _getCrossAxisCount(context),
-            crossAxisSpacing: 12.0,
-            mainAxisSpacing: 12.0,
-            childAspectRatio: 0.8,
-          ),
-          itemCount: stations.length,
-          itemBuilder: (context, index) {
-            final station = stations[index];
-            final isPlaying = radioProvider.currentPlayingId == station.stationuuid;
-            final isFavorite = radioProvider.isFavorite(station.stationuuid);
-
-            return RadioStationTile(
-              station: station,
-              isPlaying: isPlaying,
-              isFavorite: isFavorite,
-              onTap: () => radioProvider.playStation(station),
-              onFavoriteToggle: () => radioProvider.toggleFavorite(station),
-            );
-          },
         ),
       );
     }
 
-    String _getLoadingText(TabType tab) {
-      switch (tab) {
-        case TabType.stations:
-          return 'Загрузка популярных станций...';
-        case TabType.favorites:
-          return 'Загрузка избранных станций...';
-      }
-    }
+    return RefreshIndicator(
+      onRefresh: radioProvider.reloadActive,
+      child: GridView.builder(
+        physics: AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.all(16.0),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: _getCrossAxisCount(context),
+          crossAxisSpacing: 12.0,
+          mainAxisSpacing: 12.0,
+          childAspectRatio: 0.8,
+        ),
+        itemCount: stations.length,
+        itemBuilder: (context, index) {
+          final station = stations[index];
+          final isPlaying =
+              radioProvider.currentPlayingId == station.stationuuid;
+          final isFavorite = radioProvider.isFavorite(station.stationuuid);
 
-    IconData _getEmptyIcon(TabType tab, String searchQuery) {
-      if (searchQuery.isNotEmpty) {
-        return Icons.search_off;
-      }
+          return RadioStationTile(
+            station: station,
+            isPlaying: isPlaying,
+            isFavorite: isFavorite,
+            onTap: () => radioProvider.playStation(station),
+            onFavoriteToggle: () => radioProvider.toggleFavorite(station),
+          );
+        },
+      ),
+    );
+  }
 
-      switch (tab) {
-        case TabType.stations:
-          return Icons.radio;
-        case TabType.favorites:
-          return Icons.favorite_border;
-      }
-    }
-
-    String _getEmptyMessage(TabType tab, String searchQuery) {
-      if (searchQuery.isNotEmpty) {
-        return 'По запросу "$searchQuery"\nничего не найдено';
-      }
-
-      switch (tab) {
-        case TabType.stations:
-          return 'Нет доступных станций';
-        case TabType.favorites:
-          return 'Нет избранных станций';
-      }
-    }
-
-    bool _shouldShowSubMessage(TabType tab, String searchQuery) {
-      return tab == TabType.favorites && searchQuery.isEmpty;
-    }
-
-    String _getEmptySubMessage(TabType tab) {
-      switch (tab) {
-        case TabType.favorites:
-          return 'Добавьте станции в избранное,\nнажав на иконку сердца';
-        default:
-          return '';
-      }
+  String _getLoadingText(TabType tab) {
+    switch (tab) {
+      case TabType.stations:
+        return 'Загрузка популярных станций...';
+      case TabType.favorites:
+        return 'Загрузка избранных станций...';
     }
   }
+
+  IconData _getEmptyIcon(TabType tab, String searchQuery) {
+    if (searchQuery.isNotEmpty) {
+      return Icons.search_off;
+    }
+
+    switch (tab) {
+      case TabType.stations:
+        return Icons.radio;
+      case TabType.favorites:
+        return Icons.favorite_border;
+    }
+  }
+
+  String _getEmptyMessage(TabType tab, String searchQuery) {
+    if (searchQuery.isNotEmpty) {
+      return 'По запросу "$searchQuery"\nничего не найдено';
+    }
+
+    switch (tab) {
+      case TabType.stations:
+        return 'Нет доступных станций';
+      case TabType.favorites:
+        return 'Нет избранных станций';
+    }
+  }
+
+  bool _shouldShowSubMessage(TabType tab, String searchQuery) {
+    return tab == TabType.favorites && searchQuery.isEmpty;
+  }
+
+  String _getEmptySubMessage(TabType tab) {
+    switch (tab) {
+      case TabType.favorites:
+        return 'Добавьте станции в избранное,\nнажав на иконку сердца';
+      default:
+        return '';
+    }
+  }
+}
+
+class _StatusMessage extends StatelessWidget {
+  const _StatusMessage({required this.message, this.onRetry});
+
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        children: [
+          Text(message, textAlign: TextAlign.center),
+          if (onRetry != null)
+            TextButton(onPressed: onRetry, child: const Text('Повторить')),
+        ],
+      ),
+    );
+  }
+}

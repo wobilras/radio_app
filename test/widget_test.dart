@@ -16,6 +16,7 @@ class FakeRadioRepository implements RadioRepository {
   Completer<void>? startup;
   Completer<List<RadioStation>>? catalog;
   Future<List<RadioStation>> Function(String)? onSearch;
+  Future<void> Function(RadioStation)? onPlay;
   final stations = [
     RadioStation(
       stationuuid: 'one',
@@ -61,6 +62,7 @@ class FakeRadioRepository implements RadioRepository {
 
   @override
   Future<void> playStation(RadioStation station) async {
+    await onPlay?.call(station);
     _currentStationId = station.stationuuid;
     selected.add(_currentStationId);
   }
@@ -185,4 +187,49 @@ void main() {
       expect(provider.searchResults, isEmpty);
     },
   );
+
+  testWidgets('Retry uses the failed play or search operation', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final plays = <String>[];
+    final searches = <String>[];
+    final repository = FakeRadioRepository()
+      ..onPlay = (station) async {
+        plays.add(station.stationuuid);
+        if (plays.length == 1) throw StateError('offline');
+      }
+      ..onSearch = (query) async {
+        searches.add(query);
+        if (searches.length == 1) throw StateError('offline');
+        return [];
+      };
+    final provider = RadioProvider(
+      repository: repository,
+      storage: StorageService(),
+    );
+    await tester.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) => provider,
+        child: const MaterialApp(home: MainScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await provider.playStation(repository.stations.first);
+    await tester.pump();
+    expect(find.text('Station Two'), findsOneWidget);
+    await provider.playbackFailure!.retry();
+    await tester.pump();
+    expect(plays, ['one', 'one']);
+    expect(provider.playbackFailure, isNull);
+
+    provider.searchController.text = 'jazz';
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump();
+    expect(provider.catalogError, isNotNull);
+    await provider.reloadActive();
+    await tester.pump();
+    expect(provider.catalogError, isNull);
+    expect(provider.searchResults, isEmpty);
+    expect(searches, ['jazz', 'jazz']);
+  });
 }

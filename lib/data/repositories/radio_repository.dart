@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:http/http.dart' as http;
+
 import '../models/radio_station.dart';
 import '../radio_browser.dart';
 import '../radio_player.dart';
@@ -42,37 +44,15 @@ class RadioRepositoryImpl implements RadioRepository {
   @override
   Future<List<RadioStation>> getRadioStations() async {
     try {
-      print('Загрузка популярных радиостанций...');
-      final stations = await _browserService.getPopularStations(limit: 100);
-
-      return stations.isEmpty ? _getFallbackStations() : stations;
-    } catch (e) {
-      print('Ошибка загрузки станций: $e');
+      return await _browserService.getPopularStations(limit: 100);
+    } on http.ClientException {
       return _getFallbackStations();
     }
   }
 
   @override
-  Future<List<RadioStation>> searchStations(String query) async {
-    try {
-      print('Поиск станций: $query');
-
-      if (query.trim().isEmpty) {
-        return await getRadioStations();
-      }
-
-      final stations = await _browserService.searchStations(
-        name: query,
-        limit: 50,
-      );
-
-      print('Найдено ${stations.length} станций по запросу: "$query"');
-      return stations;
-    } catch (e) {
-      print('Ошибка поиска станций: $e');
-      return [];
-    }
-  }
+  Future<List<RadioStation>> searchStations(String query) =>
+      _browserService.searchStations(name: query, limit: 50);
 
   @override
   Future<List<RadioStation>> getStationsByCountry(String countryCode) async {

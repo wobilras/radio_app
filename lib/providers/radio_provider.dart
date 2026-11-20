@@ -22,7 +22,10 @@ class RadioProvider extends ChangeNotifier {
   String? _currentPlayingId;
   String? _pendingPlaybackId;
   int _playbackRequest = 0;
-  String? _error;
+  String? _catalogError;
+  String? _searchError;
+  String? _favoritesError;
+  ({String message, Future<void> Function() retry})? _playbackFailure;
   TabType _currentTab = TabType.stations;
   String _searchQuery = '';
   int _searchRequest = 0;
@@ -37,7 +40,16 @@ class RadioProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isSearching => _isSearching;
   String? get currentPlayingId => _currentPlayingId;
-  String? get error => _error;
+  String? get catalogError =>
+      _searchQuery.isEmpty ? _catalogError : _searchError;
+  String? get favoritesError => _favoritesError;
+  ({String message, Future<void> Function() retry})? get playbackFailure =>
+      _playbackFailure;
+  bool get hasFallbackStations =>
+      _currentTab == TabType.stations &&
+      _searchQuery.isEmpty &&
+      _stations.isNotEmpty &&
+      _stations.every((station) => station.stationuuid.startsWith('fallback-'));
   TabType get currentTab => _currentTab;
   String get searchQuery => _searchQuery;
   TextEditingController get searchController => _searchController;
@@ -82,7 +94,8 @@ class RadioProvider extends ChangeNotifier {
       if (_disposed) return;
       await loadStations();
     } catch (_) {
-      _setError('Не удалось запустить радио.');
+      _catalogError = 'Не удалось запустить радио.';
+      _publish();
     }
   }
 
@@ -97,6 +110,7 @@ class RadioProvider extends ChangeNotifier {
     _searchDebounceTimer?.cancel();
     final request = ++_searchRequest;
     _searchQuery = query;
+    _searchError = null;
     _searchResults = [];
     _isSearching = query.isNotEmpty;
     _publish();
@@ -116,16 +130,34 @@ class RadioProvider extends ChangeNotifier {
 
   void clearSearch() => _searchController.clear();
 
+  Future<void> reloadActive() async {
+    final query = _searchQuery;
+    if (query.isEmpty) return loadStations();
+
+    _searchDebounceTimer?.cancel();
+    final request = ++_searchRequest;
+    _searchError = null;
+    _setSearching(true);
+    await _performSearch(query, request);
+  }
+
   Future<void> _performSearch(String query, int request) async {
     try {
       final results = await _repository.searchStations(query);
       if (!_disposed && request == _searchRequest) {
         _searchResults = results;
-        _setError(null);
+        _searchError = null;
+        if (results.isNotEmpty) {
+          await _queueFavoriteChange(() async {
+            _favoriteStations = await _storage.resolveFavorites(results);
+          });
+        }
       }
-    } catch (_) {
+    } catch (error) {
       if (!_disposed && request == _searchRequest) {
-        _setError('Не удалось выполнить поиск станций.');
+        _searchError = error is FormatException
+            ? 'Каталог вернул повреждённые данные.'
+            : 'Не удалось выполнить поиск станций.';
       }
     } finally {
       if (request == _searchRequest) _setSearching(false);
@@ -155,82 +187,85 @@ class RadioProvider extends ChangeNotifier {
       if (_disposed) return;
       try {
         await change();
+        _favoritesError = null;
         _publish();
       } catch (_) {
-        _setError('Не удалось сохранить избранное.');
+        _favoritesError = 'Не удалось сохранить избранное.';
+        _publish();
       }
     });
   }
 
   Future<void> loadStations() async {
+    _catalogError = null;
+    _setLoading(true);
     try {
-      _setLoading(true);
-      _setError(null);
-
-      print(' Начинаем загрузку станций...');
       final stations = await _repository.getRadioStations();
       if (_disposed) return;
       _stations = stations;
-      if (_stations.isNotEmpty) {
+      if (stations.isNotEmpty) {
         await _queueFavoriteChange(() async {
-          _favoriteStations = await _storage.resolveFavorites(_stations);
+          _favoriteStations = await _storage.resolveFavorites(stations);
         });
       }
-
-      if (_stations.isEmpty) {
-        _setError(
-          'Не удалось загрузить станции. Проверьте интернет-соединение.',
-        );
-        print(' Список станций пуст');
-      } else {
-        print('Загружено ${_stations.length} станций');
-      }
-    } catch (e) {
-      final errorMessage = 'Ошибка загрузки станций: $e';
-      _setError(errorMessage);
-      print('$errorMessage');
+    } catch (error) {
+      _catalogError = error is FormatException
+          ? 'Каталог вернул повреждённые данные.'
+          : 'Не удалось загрузить каталог.';
     } finally {
       _setLoading(false);
     }
   }
 
   Future<void> refreshServers() async {
-    try {
-      print('Обновление серверов...');
-      await _repository.refreshServers();
-    } catch (e) {
-      print('Ошибка обновления серверов: $e');
-    }
+    await _repository.refreshServers();
+    if (!_disposed) await reloadActive();
   }
 
-  Future<void> playStation(RadioStation station) async {
+  Future<void> playStation(RadioStation station) {
     if ((_pendingPlaybackId ?? _currentPlayingId) == station.stationuuid) {
-      await stopCurrentStation();
-      return;
+      return stopCurrentStation();
     }
+    return _startPlayback(station);
+  }
+
+  Future<void> _startPlayback(RadioStation station) {
+    return _runPlayback(
+      station.stationuuid,
+      () => _repository.playStation(station),
+      'Не удалось воспроизвести станцию.',
+      () => _startPlayback(station),
+    );
+  }
+
+  Future<void> stopCurrentStation() {
+    return _runPlayback(
+      null,
+      _repository.stopStation,
+      'Не удалось остановить воспроизведение.',
+      stopCurrentStation,
+    );
+  }
+
+  Future<void> _runPlayback(
+    String? pendingId,
+    Future<void> Function() action,
+    String message,
+    Future<void> Function() retry,
+  ) async {
     final request = ++_playbackRequest;
-    _pendingPlaybackId = station.stationuuid;
+    _pendingPlaybackId = pendingId;
     try {
-      await _repository.playStation(station);
-      if (request == _playbackRequest) _setError(null);
+      await action();
+      if (request == _playbackRequest) _playbackFailure = null;
     } catch (_) {
       if (request == _playbackRequest) {
-        _setError('Не удалось воспроизвести станцию.');
+        _playbackFailure = (message: message, retry: retry);
       }
     } finally {
-      if (request == _playbackRequest) _pendingPlaybackId = null;
-    }
-  }
-
-  Future<void> stopCurrentStation() async {
-    final request = ++_playbackRequest;
-    _pendingPlaybackId = null;
-    try {
-      await _repository.stopStation();
-      if (request == _playbackRequest) _setError(null);
-    } catch (_) {
       if (request == _playbackRequest) {
-        _setError('Не удалось остановить воспроизведение.');
+        _pendingPlaybackId = null;
+        _publish();
       }
     }
   }
@@ -255,13 +290,6 @@ class RadioProvider extends ChangeNotifier {
   void _setSearching(bool searching) {
     if (!_disposed && _isSearching != searching) {
       _isSearching = searching;
-      _publish();
-    }
-  }
-
-  void _setError(String? error) {
-    if (!_disposed && _error != error) {
-      _error = error;
       _publish();
     }
   }
