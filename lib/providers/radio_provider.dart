@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/models/radio_station.dart';
@@ -19,6 +20,8 @@ class RadioProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool _isSearching = false;
   String? _currentPlayingId;
+  String? _pendingPlaybackId;
+  int _playbackRequest = 0;
   String? _error;
   TabType _currentTab = TabType.stations;
   String _searchQuery = '';
@@ -56,12 +59,13 @@ class RadioProvider extends ChangeNotifier {
   RadioProvider({
     required RadioRepository repository,
     required StorageService storage,
-  })  : _repository = repository,
-        _storage = storage {
+  }) : _repository = repository,
+       _storage = storage {
     _searchController.addListener(_onSearchChanged);
     _currentPlayingId = _repository.currentStationId;
-    _currentStationSubscription =
-        _repository.currentStationStream.listen((stationId) {
+    _currentStationSubscription = _repository.currentStationStream.listen((
+      stationId,
+    ) {
       if (_disposed || _currentPlayingId == stationId) return;
       _currentPlayingId = stationId;
       _publish();
@@ -199,7 +203,8 @@ class RadioProvider extends ChangeNotifier {
 
       if (_stations.isEmpty) {
         _setError(
-            'Не удалось загрузить станции. Проверьте интернет-соединение.');
+          'Не удалось загрузить станции. Проверьте интернет-соединение.',
+        );
         print(' Список станций пуст');
       } else {
         print('Загружено ${_stations.length} станций');
@@ -223,26 +228,34 @@ class RadioProvider extends ChangeNotifier {
   }
 
   Future<void> playStation(RadioStation station) async {
+    if ((_pendingPlaybackId ?? _currentPlayingId) == station.stationuuid) {
+      await stopCurrentStation();
+      return;
+    }
+    final request = ++_playbackRequest;
+    _pendingPlaybackId = station.stationuuid;
     try {
-      if (_currentPlayingId == station.stationuuid) {
-        await _repository.stopStation();
-        return;
-      }
       await _repository.playStation(station);
-      _setError(null);
-    } catch (e) {
-      _setError('Ошибка воспроизведения: $e');
-      print('Ошибка воспроизведения станции: $e');
+      if (request == _playbackRequest) _setError(null);
+    } catch (_) {
+      if (request == _playbackRequest) {
+        _setError('Не удалось воспроизвести станцию.');
+      }
+    } finally {
+      if (request == _playbackRequest) _pendingPlaybackId = null;
     }
   }
 
   Future<void> stopCurrentStation() async {
+    final request = ++_playbackRequest;
+    _pendingPlaybackId = null;
     try {
       await _repository.stopStation();
-      _setError(null);
-    } catch (e) {
-      _setError('Ошибка остановки: $e');
-      print('Ошибка остановки воспроизведения: $e');
+      if (request == _playbackRequest) _setError(null);
+    } catch (_) {
+      if (request == _playbackRequest) {
+        _setError('Не удалось остановить воспроизведение.');
+      }
     }
   }
 

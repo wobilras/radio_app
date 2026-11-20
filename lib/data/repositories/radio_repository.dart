@@ -128,13 +128,13 @@ class RadioRepositoryImpl implements RadioRepository {
   @override
   Future<void> playStation(RadioStation station) async {
     try {
-      await _audioService.playStation(
+      final started = await _audioService.playStation(
         station.stationuuid,
         station.name,
         station.url,
       );
 
-      if (!station.stationuuid.startsWith('fallback-')) {
+      if (started && !station.stationuuid.startsWith('fallback-')) {
         unawaited(_browserService.registerStationClick(station.stationuuid));
       }
     } catch (e) {

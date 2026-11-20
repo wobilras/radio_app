@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:audioplayers/audioplayers.dart';
 
 class AudioPlayerService {
@@ -8,6 +9,8 @@ class AudioPlayerService {
   StreamSubscription<PlayerState>? _stateSubscription;
   StreamSubscription<String>? _logSubscription;
   Future<void>? _closing;
+  Future<void> _commands = Future.value();
+  int _intent = 0;
 
   String? _currentStationId;
   String? _currentStationName;
@@ -28,10 +31,15 @@ class AudioPlayerService {
   Future<void> initialize() async {
     if (_stateSubscription != null || _closing != null) return;
 
-    _stateSubscription =
-        _player.onPlayerStateChanged.listen((PlayerState state) {
+    _stateSubscription = _player.onPlayerStateChanged.listen((
+      PlayerState state,
+    ) {
       print('Состояние плеера изменено: $state');
       _stateController.add(state);
+      if ((state == PlayerState.stopped || state == PlayerState.completed) &&
+          state == _player.state) {
+        _setCurrentStation(null, null);
+      }
     });
 
     _logSubscription = _player.onLog.listen((String message) {
@@ -41,42 +49,53 @@ class AudioPlayerService {
     print('Audio Player Service инициализирован успешно');
   }
 
-  Future<void> playStation(
-      String stationId, String stationName, String streamUrl) async {
-    try {
-      print('Воспроизведение станции: $stationName ($stationId)');
-      print('Stream URL: $streamUrl');
-      await stop();
-      await _player.play(UrlSource(streamUrl));
-
-      _currentStationId = stationId;
-      _currentStationName = stationName;
-      _currentStationController.add(stationId);
-
-      print('Станция $stationName начала воспроизводиться');
-    } catch (e) {
-      print('Ошибка воспроизведения станции: $e');
-      rethrow;
-    }
+  Future<bool> playStation(
+    String stationId,
+    String stationName,
+    String streamUrl,
+  ) {
+    final intent = ++_intent;
+    return _enqueue(() async {
+      if (!_isCurrent(intent)) return false;
+      await _player.stop();
+      _setCurrentStation(null, null);
+      if (!_isCurrent(intent)) return false;
+      try {
+        await _player.play(UrlSource(streamUrl));
+      } catch (_) {
+        if (!_isCurrent(intent)) return false;
+        rethrow;
+      }
+      if (!_isCurrent(intent) || _player.state != PlayerState.playing) {
+        return false;
+      }
+      _setCurrentStation(stationId, stationName);
+      return true;
+    });
   }
 
-  Future<void> stop() async {
-    try {
-      print('Остановка воспроизведения');
+  Future<void> stop() {
+    final intent = ++_intent;
+    return _enqueue(() async {
+      if (!_isCurrent(intent)) return;
       await _player.stop();
+      _setCurrentStation(null, null);
+    });
+  }
 
-      String? previousStation = _currentStationId;
-      _currentStationId = null;
-      _currentStationName = null;
-      _currentStationController.add(null);
+  bool _isCurrent(int intent) => _closing == null && _intent == intent;
 
-      if (previousStation != null) {
-        print('Воспроизведение станции остановлено');
-      }
-    } catch (e) {
-      print('Ошибка остановки воспроизведения: $e');
-      rethrow;
-    }
+  Future<T> _enqueue<T>(Future<T> Function() command) {
+    final result = _commands.then((_) => command());
+    _commands = result.then<void>((_) {}, onError: (Object _) {});
+    return result;
+  }
+
+  void _setCurrentStation(String? id, String? name) {
+    if (_currentStationId == id) return;
+    _currentStationId = id;
+    _currentStationName = name;
+    _currentStationController.add(id);
   }
 
   Future<void> pause() async {
@@ -112,6 +131,7 @@ class AudioPlayerService {
   Future<void> dispose() => _closing ??= _dispose();
 
   Future<void> _dispose() async {
+    await _commands;
     await _stateSubscription?.cancel();
     await _logSubscription?.cancel();
     try {

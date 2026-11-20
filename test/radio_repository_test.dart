@@ -21,25 +21,37 @@ class RecordingAudio extends Fake implements AudioPlayerService {
   final played = <String>[];
 
   @override
-  Future<void> playStation(String id, String name, String url) async {
+  Future<bool> playStation(String id, String name, String url) async {
     played.add(id);
+    return true;
   }
 }
 
 void main() {
-  test('playback does not wait for click registration and skips fallback IDs', () async {
-    final browser = PendingClickBrowser();
-    final audio = RecordingAudio();
-    final repository = RadioRepositoryImpl(browserService: browser, audioService: audio);
+  test(
+    'playback does not wait for click registration and skips fallback IDs',
+    () async {
+      final browser = PendingClickBrowser();
+      final audio = RecordingAudio();
+      final repository = RadioRepositoryImpl(
+        browserService: browser,
+        audioService: audio,
+      );
 
-    final station = RadioStation(stationuuid: 'catalog', name: 'Radio', url: 'https://example.test/radio');
-    await repository.playStation(station);
-    expect(audio.played, ['catalog']);
-    expect(browser.clicked, ['catalog']);
+      final station = RadioStation(
+        stationuuid: 'catalog',
+        name: 'Radio',
+        url: 'https://example.test/radio',
+      );
+      await repository.playStation(station);
+      expect(audio.played, ['catalog']);
+      expect(browser.clicked, ['catalog']);
 
-    await repository.playStation(station.copyWith(stationuuid: 'fallback-1'));
-    expect(audio.played, ['catalog', 'fallback-1']);
-    expect(browser.clicked, ['catalog']);
-    browser.completion.complete();
-  }, timeout: const Timeout(Duration(seconds: 3)));
+      await repository.playStation(station.copyWith(stationuuid: 'fallback-1'));
+      expect(audio.played, ['catalog', 'fallback-1']);
+      expect(browser.clicked, ['catalog']);
+      browser.completion.complete();
+    },
+    timeout: const Timeout(Duration(seconds: 3)),
+  );
 }
