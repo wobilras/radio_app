@@ -269,4 +269,55 @@ void main() {
       expect(provider.filteredStations, hasLength(2));
     },
   );
+
+  testWidgets(
+    'Recovery actions stay reachable with large text and a keyboard',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 600);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetViewInsets);
+      var fails = true;
+      final repository = FakeRadioRepository()
+        ..onSearch = (_) async {
+          if (fails) throw StateError('offline');
+          return [];
+        };
+      await tester.pumpWidget(
+        ChangeNotifierProvider(
+          create: (_) =>
+              RadioProvider(repository: repository, storage: StorageService()),
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: const TextScaler.linear(2)),
+              child: child!,
+            ),
+            home: const MainScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'jazz');
+      tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      final retry = find.widgetWithText(TextButton, 'Повторить');
+      await tester.ensureVisible(retry);
+      await tester.pumpAndSettle();
+      expect(retry.hitTestable(), findsOneWidget);
+      fails = false;
+      await tester.tap(retry);
+      await tester.pumpAndSettle();
+      final refresh = find.widgetWithText(OutlinedButton, 'Обновить серверы');
+      await tester.ensureVisible(refresh);
+      await tester.pumpAndSettle();
+      expect(refresh.hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

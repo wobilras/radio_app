@@ -9,274 +9,190 @@ class MainScreen extends StatelessWidget {
   const MainScreen({super.key});
 
   int _getCrossAxisCount(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-
-    if (screenWidth < 600) {
-      return 2;
-    } else if (screenWidth < 900) {
-      return 3;
-    } else if (screenWidth < 1200) {
-      return 4;
-    } else {
-      return 5;
+    final width = MediaQuery.sizeOf(context).width;
+    if (width < 360 && MediaQuery.textScalerOf(context).scale(16) > 24) {
+      return 1;
     }
+    if (width < 600) return 2;
+    if (width < 900) return 3;
+    if (width < 1200) return 4;
+    return 5;
   }
 
   @override
   Widget build(BuildContext context) {
-    final radioProvider = Provider.of<RadioProvider>(context);
-
+    final provider = Provider.of<RadioProvider>(context);
     return Scaffold(
-      appBar: MainAppBar(
-        currentTab: radioProvider.currentTab,
-        onTabChanged: radioProvider.setCurrentTab,
-        searchController: radioProvider.searchController,
-        onSearchClear: radioProvider.clearSearch,
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(
+          160 +
+              (MediaQuery.textScalerOf(context).scale(16) - 16).clamp(0, 24) *
+                  3.5,
+        ),
+        child: MainAppBar(
+          currentTab: provider.currentTab,
+          onTabChanged: provider.setCurrentTab,
+          searchController: provider.searchController,
+          onSearchClear: provider.clearSearch,
+        ),
       ),
       body: Consumer<RadioProvider>(
-        builder: (context, radioProvider, child) {
-          return _buildContent(context, radioProvider);
-        },
+        builder: (context, provider, _) => _buildContent(context, provider),
       ),
     );
   }
 
-  Widget _buildContent(BuildContext context, RadioProvider radioProvider) {
-    if (radioProvider.isLoading) {
-      return Center(
+  Widget _buildContent(BuildContext context, RadioProvider provider) {
+    final stations = provider.filteredStations;
+    final catalogError = provider.catalogError;
+    final favoritesError = provider.favoritesError;
+    final playback = provider.playbackFailure;
+    final loading = provider.isLoading || provider.isSearching;
+    return RefreshIndicator(
+      onRefresh: provider.reloadActive,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          if (catalogError != null || provider.hasFallbackStations)
+            SliverToBoxAdapter(
+              child: _StatusMessage(
+                message: catalogError ?? 'Показаны резервные станции.',
+                onRetry: provider.reloadActive,
+              ),
+            ),
+          if (favoritesError != null)
+            SliverToBoxAdapter(child: _StatusMessage(message: favoritesError)),
+          if (playback != null)
+            SliverToBoxAdapter(
+              child: _StatusMessage(
+                message: playback.message,
+                onRetry: playback.retry,
+              ),
+            ),
+          if (loading)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 16),
+                      Text(
+                        provider.isSearching
+                            ? 'Поиск станций...'
+                            : 'Загрузка популярных станций...',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else if (stations.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _EmptyStations(provider: provider),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.all(16),
+              sliver: SliverGrid.builder(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: _getCrossAxisCount(context),
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 0.8,
+                ),
+                itemCount: stations.length,
+                itemBuilder: (context, index) {
+                  final station = stations[index];
+                  return RadioStationTile(
+                    key: ValueKey(station.stationuuid),
+                    station: station,
+                    isPlaying: provider.currentPlayingId == station.stationuuid,
+                    isFavorite: provider.isFavorite(station.stationuuid),
+                    onTap: () => provider.playStation(station),
+                    onFavoriteToggle: () => provider.toggleFavorite(station),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyStations extends StatelessWidget {
+  const _EmptyStations({required this.provider});
+
+  final RadioProvider provider;
+
+  @override
+  Widget build(BuildContext context) {
+    final query = provider.searchQuery;
+    final searching = query.isNotEmpty;
+    final favorites = provider.currentTab == TabType.favorites;
+    final error = provider.catalogError;
+    final icon = searching
+        ? Icons.search_off
+        : (favorites ? Icons.favorite_border : Icons.radio);
+    final message = searching
+        ? 'По запросу "$query" ничего не найдено'
+        : (favorites ? 'Нет избранных станций' : 'Нет доступных станций');
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text(
-              _getLoadingText(radioProvider.currentTab),
-              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            if (error == null) ...[
+              Icon(icon, size: 64, color: Colors.grey[400]),
+              const SizedBox(height: 16),
+              Text(message, textAlign: TextAlign.center),
+              if (favorites)
+                const Text(
+                  'Добавьте станции в избранное, нажав на иконку сердца',
+                  textAlign: TextAlign.center,
+                ),
+              const SizedBox(height: 16),
+            ],
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (searching)
+                  OutlinedButton(
+                    onPressed: provider.clearSearch,
+                    child: const Text(
+                      'Очистить поиск',
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                else if (error == null)
+                  OutlinedButton(
+                    onPressed: provider.reloadActive,
+                    child: const Text('Обновить', textAlign: TextAlign.center),
+                  ),
+                if (!favorites)
+                  OutlinedButton(
+                    onPressed: provider.refreshServers,
+                    child: const Text(
+                      'Обновить серверы',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+              ],
             ),
           ],
         ),
-      );
-    }
-
-    // Показываем индикатор поиска отдельно от основной загрузки
-    Widget content = _buildStationsList(context, radioProvider);
-
-    if (radioProvider.isSearching && radioProvider.searchQuery.isNotEmpty) {
-      content = Column(
-        children: [
-          Container(
-            padding: EdgeInsets.all(16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                SizedBox(width: 12),
-                Text(
-                  'Поиск станций...',
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                ),
-              ],
-            ),
-          ),
-          Expanded(child: content),
-        ],
-      );
-    }
-
-    final catalogError = radioProvider.catalogError;
-    final favoritesError = radioProvider.favoritesError;
-    final playback = radioProvider.playbackFailure;
-    return Column(
-      children: [
-        if (catalogError != null || radioProvider.hasFallbackStations)
-          _StatusMessage(
-            message: catalogError ?? 'Показаны резервные станции.',
-            onRetry: radioProvider.reloadActive,
-          ),
-        if (favoritesError != null) _StatusMessage(message: favoritesError),
-        if (playback != null)
-          _StatusMessage(message: playback.message, onRetry: playback.retry),
-        Expanded(child: content),
-      ],
-    );
-  }
-
-  Widget _buildStationsList(BuildContext context, RadioProvider radioProvider) {
-    final stations = radioProvider.filteredStations;
-
-    if (stations.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                _getEmptyIcon(
-                  radioProvider.currentTab,
-                  radioProvider.searchQuery,
-                ),
-                size: 64,
-                color: Colors.grey[400],
-              ),
-              SizedBox(height: 16),
-              Text(
-                _getEmptyMessage(
-                  radioProvider.currentTab,
-                  radioProvider.searchQuery,
-                ),
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-                textAlign: TextAlign.center,
-              ),
-              if (_shouldShowSubMessage(
-                radioProvider.currentTab,
-                radioProvider.searchQuery,
-              ))
-                Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    _getEmptySubMessage(radioProvider.currentTab),
-                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              SizedBox(height: 24),
-              if (radioProvider.searchQuery.isNotEmpty)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: () => radioProvider.clearSearch(),
-                      icon: Icon(Icons.clear),
-                      label: Text('Очистить поиск'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.grey,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                    SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: () => radioProvider.refreshServers(),
-                      icon: Icon(Icons.dns),
-                      label: Text('Обновить серверы'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ],
-                )
-              else
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: radioProvider.reloadActive,
-                      icon: Icon(Icons.refresh),
-                      label: Text('Обновить'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                    SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: () => radioProvider.refreshServers(),
-                      icon: Icon(Icons.dns),
-                      label: Text('Обновить серверы'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: radioProvider.reloadActive,
-      child: GridView.builder(
-        physics: AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.all(16.0),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: _getCrossAxisCount(context),
-          crossAxisSpacing: 12.0,
-          mainAxisSpacing: 12.0,
-          childAspectRatio: 0.8,
-        ),
-        itemCount: stations.length,
-        itemBuilder: (context, index) {
-          final station = stations[index];
-          final isPlaying =
-              radioProvider.currentPlayingId == station.stationuuid;
-          final isFavorite = radioProvider.isFavorite(station.stationuuid);
-
-          return RadioStationTile(
-            station: station,
-            isPlaying: isPlaying,
-            isFavorite: isFavorite,
-            onTap: () => radioProvider.playStation(station),
-            onFavoriteToggle: () => radioProvider.toggleFavorite(station),
-          );
-        },
       ),
     );
-  }
-
-  String _getLoadingText(TabType tab) {
-    switch (tab) {
-      case TabType.stations:
-        return 'Загрузка популярных станций...';
-      case TabType.favorites:
-        return 'Загрузка избранных станций...';
-    }
-  }
-
-  IconData _getEmptyIcon(TabType tab, String searchQuery) {
-    if (searchQuery.isNotEmpty) {
-      return Icons.search_off;
-    }
-
-    switch (tab) {
-      case TabType.stations:
-        return Icons.radio;
-      case TabType.favorites:
-        return Icons.favorite_border;
-    }
-  }
-
-  String _getEmptyMessage(TabType tab, String searchQuery) {
-    if (searchQuery.isNotEmpty) {
-      return 'По запросу "$searchQuery"\nничего не найдено';
-    }
-
-    switch (tab) {
-      case TabType.stations:
-        return 'Нет доступных станций';
-      case TabType.favorites:
-        return 'Нет избранных станций';
-    }
-  }
-
-  bool _shouldShowSubMessage(TabType tab, String searchQuery) {
-    return tab == TabType.favorites && searchQuery.isEmpty;
-  }
-
-  String _getEmptySubMessage(TabType tab) {
-    switch (tab) {
-      case TabType.favorites:
-        return 'Добавьте станции в избранное,\nнажав на иконку сердца';
-      default:
-        return '';
-    }
   }
 }
 
