@@ -3,6 +3,8 @@ import '../radio_browser.dart';
 import '../radio_player.dart';
 
 abstract class RadioRepository {
+  Future<void> initialize();
+  void dispose();
   Future<List<RadioStation>> getRadioStations();
   Future<List<RadioStation>> searchStations(String query);
   Future<List<RadioStation>> getStationsByCountry(String countryCode);
@@ -23,6 +25,7 @@ class RadioRepositoryImpl implements RadioRepository {
   @override
   String? get currentStationId => _audioService.currentStationId;
 
+  @override
   Future<void> initialize() async {
     await _audioService.initialize();
   }
@@ -192,6 +195,7 @@ class RadioRepositoryImpl implements RadioRepository {
     ];
   }
 
+  @override
   void dispose() {
     _audioService.dispose();
     _browserService.dispose();

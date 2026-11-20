@@ -46,6 +46,21 @@ class RadioStation {
     );
   }
 
+  Map<String, Object> toJson() => {
+        'stationuuid': stationuuid,
+        'name': name,
+        'url': url,
+        'favicon': favicon,
+        'country': country,
+        'countrycode': countrycode,
+        'language': language,
+        'tags': tags,
+        'votes': votes,
+        'clickcount': clickcount,
+        'codec': codec,
+        'bitrate': bitrate,
+      };
+
   RadioStation copyWith({
     String? stationuuid,
     String? name,

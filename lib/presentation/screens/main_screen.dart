@@ -273,8 +273,8 @@ class MainScreen extends StatelessWidget {
               station: station,
               isPlaying: isPlaying,
               isFavorite: isFavorite,
-              onTap: () => radioProvider.playStation(station.stationuuid),
-              onFavoriteToggle: () => radioProvider.toggleFavorite(station.stationuuid),
+              onTap: () => radioProvider.playStation(station),
+              onFavoriteToggle: () => radioProvider.toggleFavorite(station),
             );
           },
         ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:radio_app/data/repositories/radio_repository.dart';
+import 'package:radio_app/data/storage.dart';
 import 'package:radio_app/presentation/screens/main_screen.dart';
 import 'package:radio_app/providers/radio_provider.dart';
 
@@ -14,7 +16,12 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => RadioProvider()),
+        ChangeNotifierProvider(
+          create: (_) => RadioProvider(
+            repository: RadioRepositoryImpl(),
+            storage: StorageService(),
+          ),
+        ),
       ],
       child: MaterialApp(
         title: 'Radio Browser',

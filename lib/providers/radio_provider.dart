@@ -1,15 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
 
 import '../data/models/radio_station.dart';
 import '../data/repositories/radio_repository.dart';
+import '../data/storage.dart';
 
 enum TabType { stations, favorites }
 
 class RadioProvider extends ChangeNotifier {
-  final RadioRepository _repository = RadioRepositoryImpl();
+  final RadioRepository _repository;
+  final StorageService _storage;
 
   List<RadioStation> _stations = [];
   List<RadioStation> _favoriteStations = [];
@@ -24,9 +24,10 @@ class RadioProvider extends ChangeNotifier {
   StreamSubscription? _currentStationSubscription;
   Timer? _searchDebounceTimer;
 
-  List<RadioStation> get stations => _stations;
-  List<RadioStation> get favoriteStations => _favoriteStations;
-  List<RadioStation> get searchResults => _searchResults;
+  List<RadioStation> get stations => List.unmodifiable(_stations);
+  List<RadioStation> get favoriteStations =>
+      List.unmodifiable(_favoriteStations);
+  List<RadioStation> get searchResults => List.unmodifiable(_searchResults);
   bool get isLoading => _isLoading;
   bool get isSearching => _isSearching;
   String? get currentPlayingId => _currentPlayingId;
@@ -37,28 +38,31 @@ class RadioProvider extends ChangeNotifier {
 
   List<RadioStation> get filteredStations {
     if (_searchQuery.isNotEmpty && _searchResults.isNotEmpty) {
-      return _searchResults;
+      return searchResults;
     }
     if (_searchQuery.isNotEmpty && _searchResults.isEmpty && !_isSearching) {
       return [];
     }
     switch (_currentTab) {
       case TabType.stations:
-        return _stations;
+        return stations;
       case TabType.favorites:
-        return _favoriteStations;
+        return favoriteStations;
     }
   }
 
-  RadioProvider() {
+  RadioProvider({
+    required RadioRepository repository,
+    required StorageService storage,
+  })  : _repository = repository,
+        _storage = storage {
     _initialize();
   }
 
   Future<void> _initialize() async {
-    if (_repository is RadioRepositoryImpl) {
-      await (_repository as RadioRepositoryImpl).initialize();
-    }
-    _currentStationSubscription = _repository.currentStationStream.listen((stationId) {
+    await _repository.initialize();
+    _currentStationSubscription =
+        _repository.currentStationStream.listen((stationId) {
       if (_currentPlayingId != stationId) {
         _currentPlayingId = stationId;
         notifyListeners();
@@ -140,35 +144,14 @@ class RadioProvider extends ChangeNotifier {
     return _favoriteStations.any((station) => station.stationuuid == stationId);
   }
 
-  Future<void> toggleFavorite(String stationId) async {
+  Future<void> toggleFavorite(RadioStation station) async {
     try {
-      if (isFavorite(stationId)) {
-        _favoriteStations.removeWhere((s) => s.stationuuid == stationId);
+      final id = station.stationuuid;
+      if (isFavorite(id)) {
+        _favoriteStations.removeWhere((item) => item.stationuuid == id);
       } else {
-        RadioStation? station;
-        if (_searchQuery.isNotEmpty && _searchResults.isNotEmpty) {
-          try {
-            station = _searchResults.firstWhere((s) => s.stationuuid == stationId);
-          } catch (e) {
-            // Станция не найдена в результатах поиска
-          }
-        }
-
-        if (station == null) {
-          try {
-            station = _stations.firstWhere((s) => s.stationuuid == stationId);
-          } catch (e) {
-            // Станция не найдена в основных станциях
-          }
-        }
-
-        if (station == null) {
-          throw Exception('Станция не найдена');
-        }
-
         _favoriteStations.add(station);
       }
-
       await _saveFavoriteStations();
       notifyListeners();
     } catch (e) {
@@ -185,7 +168,8 @@ class RadioProvider extends ChangeNotifier {
       _stations = await _repository.getRadioStations();
 
       if (_stations.isEmpty) {
-        _setError('Не удалось загрузить станции. Проверьте интернет-соединение.');
+        _setError(
+            'Не удалось загрузить станции. Проверьте интернет-соединение.');
         print(' Список станций пуст');
       } else {
         print('Загружено ${_stations.length} станций');
@@ -202,53 +186,20 @@ class RadioProvider extends ChangeNotifier {
   Future<void> refreshServers() async {
     try {
       print('Обновление серверов...');
-      if (_repository is RadioRepositoryImpl) {
-        final repo = _repository as RadioRepositoryImpl;
-        await repo.refreshServers();
-        print('Серверы обновлены');
-      }
+      await _repository.refreshServers();
     } catch (e) {
       print('Ошибка обновления серверов: $e');
     }
   }
 
-  Future<void> playStation(String stationId) async {
+  Future<void> playStation(RadioStation station) async {
     try {
-      if (_currentPlayingId == stationId) {
+      if (_currentPlayingId == station.stationuuid) {
         await _repository.stopStation();
         return;
       }
-      RadioStation? station;
-      if (_searchQuery.isNotEmpty && _searchResults.isNotEmpty) {
-        try {
-          station = _searchResults.firstWhere((s) => s.stationuuid == stationId);
-        } catch (e) {
-          // Станция не найдена в результатах поиска
-        }
-      }
-
-      if (station == null) {
-        try {
-          station = _stations.firstWhere((s) => s.stationuuid == stationId);
-        } catch (e) {
-          // Станция не найдена в основных станциях
-        }
-      }
-
-      if (station == null) {
-        try {
-          station = _favoriteStations.firstWhere((s) => s.stationuuid == stationId);
-        } catch (e) {
-          // Станция не найдена в избранных
-        }
-      }
-
-      if (station != null) {
-        await _repository.playStation(station);
-        _setError(null);
-      } else {
-        throw Exception('Станция не найдена');
-      }
+      await _repository.playStation(station);
+      _setError(null);
     } catch (e) {
       _setError('Ошибка воспроизведения: $e');
       print('Ошибка воспроизведения станции: $e');
@@ -267,14 +218,7 @@ class RadioProvider extends ChangeNotifier {
 
   Future<void> _loadFavoriteStations() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final favoritesJson = prefs.getStringList('favorite_stations') ?? [];
-
-      _favoriteStations = favoritesJson.map((jsonString) {
-        final json = jsonDecode(jsonString);
-        return RadioStation.fromJson(json);
-      }).toList();
-
+      _favoriteStations = await _storage.loadFavoriteStations();
       print('Загружено ${_favoriteStations.length} избранных станций');
     } catch (e) {
       print('Ошибка загрузки избранных станций: $e');
@@ -284,25 +228,7 @@ class RadioProvider extends ChangeNotifier {
 
   Future<void> _saveFavoriteStations() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final favoritesJson = _favoriteStations.map((station) {
-        return jsonEncode({
-          'stationuuid': station.stationuuid,
-          'name': station.name,
-          'url': station.url,
-          'favicon': station.favicon,
-          'country': station.country,
-          'countrycode': station.countrycode,
-          'language': station.language,
-          'tags': station.tags,
-          'votes': station.votes,
-          'clickcount': station.clickcount,
-          'codec': station.codec,
-          'bitrate': station.bitrate,
-        });
-      }).toList();
-
-      await prefs.setStringList('favorite_stations', favoritesJson);
+      await _storage.saveFavoriteStations(_favoriteStations);
       print('Избранные станции сохранены: ${_favoriteStations.length}');
     } catch (e) {
       print('Ошибка сохранения избранных станций: $e');
@@ -335,9 +261,7 @@ class RadioProvider extends ChangeNotifier {
     _searchDebounceTimer?.cancel();
     _currentStationSubscription?.cancel();
     _searchController.dispose();
-    if (_repository is RadioRepositoryImpl) {
-      (_repository as RadioRepositoryImpl).dispose();
-    }
+    _repository.dispose();
     super.dispose();
   }
 }
