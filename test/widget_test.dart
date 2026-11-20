@@ -75,6 +75,19 @@ class FakeRadioRepository implements RadioRepository {
   void dispose() => unawaited(selected.close());
 }
 
+class FirstReadFailsStorage extends StorageService {
+  bool _fail = true;
+
+  @override
+  Future<List<RadioStation>> loadFavoriteStations() async {
+    if (_fail) {
+      _fail = false;
+      throw StateError('Temporary read failure');
+    }
+    return super.loadFavoriteStations();
+  }
+}
+
 void main() {
   testWidgets('Does not publish or attach listeners after disposal', (
     tester,
@@ -240,7 +253,7 @@ void main() {
       final firstSearch = Completer<List<RadioStation>>();
       repository.onSearch = (_) => firstSearch.future;
       final storage = StorageService();
-      await storage.saveFavoriteStations([repository.stations.last]);
+      await storage.toggleFavorite(repository.stations.last);
       final provider = RadioProvider(repository: repository, storage: storage);
       addTearDown(provider.dispose);
       await tester.pump();
@@ -316,4 +329,23 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('Adding a favorite after a failed read preserves stored cards', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final repository = FakeRadioRepository()
+      ..catalog = Completer<List<RadioStation>>();
+    await StorageService().toggleFavorite(repository.stations.first);
+    final storage = FirstReadFailsStorage();
+    final provider = RadioProvider(repository: repository, storage: storage);
+    addTearDown(provider.dispose);
+    await tester.pump();
+    expect(provider.favoriteStations, isEmpty);
+    await provider.toggleFavorite(repository.stations.last);
+    final reloaded = await StorageService().loadFavoriteStations();
+    expect(reloaded.map((station) => station.stationuuid), ['one', 'two']);
+    repository.catalog!.complete(repository.stations);
+    await tester.pump();
+  });
 }

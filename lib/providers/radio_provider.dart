@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 
@@ -42,8 +43,9 @@ class RadioProvider extends ChangeNotifier {
       _currentTab == TabType.stations && _searchQuery.isEmpty && _isLoading;
   bool get isSearching => _isSearching;
   String? get currentPlayingId => _currentPlayingId;
-  String? get catalogError =>
-      _searchQuery.isEmpty ? _catalogError : _searchError;
+  String? get catalogError => _currentTab == TabType.favorites
+      ? null
+      : (_searchQuery.isEmpty ? _catalogError : _searchError);
   String? get favoritesError => _favoritesError;
   ({String message, Future<void> Function() retry})? get playbackFailure =>
       _playbackFailure;
@@ -61,11 +63,7 @@ class RadioProvider extends ChangeNotifier {
     return _searchQuery.isEmpty ? stations : searchResults;
   }
 
-  RadioProvider({
-    required RadioRepository repository,
-    required StorageService storage,
-  }) : _repository = repository,
-       _storage = storage {
+  RadioProvider({required this._repository, required this._storage}) {
     _searchController.addListener(_onSearchChanged);
     _currentPlayingId = _repository.currentStationId;
     _currentStationSubscription = _repository.currentStationStream.listen((
@@ -128,8 +126,7 @@ class RadioProvider extends ChangeNotifier {
 
   Future<void> reloadActive() async {
     if (_currentTab == TabType.favorites) {
-      await _favoriteChanges;
-      if (!_disposed) await _loadFavoriteStations();
+      await _loadFavoriteStations();
       return;
     }
     final query = _searchQuery;
@@ -156,6 +153,11 @@ class RadioProvider extends ChangeNotifier {
       }
     } catch (error) {
       if (!_disposed && request == _searchRequest) {
+        developer.log(
+          'Station search failed',
+          name: 'radio.catalog',
+          error: error.runtimeType,
+        );
         _searchError = error is FormatException
             ? 'Каталог вернул повреждённые данные.'
             : 'Не удалось выполнить поиск станций.';
@@ -171,15 +173,8 @@ class RadioProvider extends ChangeNotifier {
 
   Future<void> toggleFavorite(RadioStation station) {
     return _queueFavoriteChange(() async {
-      final id = station.stationuuid;
-      final updated = [..._favoriteStations];
-      if (isFavorite(id)) {
-        updated.removeWhere((item) => item.stationuuid == id);
-      } else {
-        updated.add(station);
-      }
-      await _storage.saveFavoriteStations(updated);
-      _favoriteStations = updated;
+      final favorites = await _storage.toggleFavorite(station);
+      if (!_disposed) _favoriteStations = favorites;
     });
   }
 
@@ -215,6 +210,11 @@ class RadioProvider extends ChangeNotifier {
         });
       }
     } catch (error) {
+      developer.log(
+        'Catalog load failed',
+        name: 'radio.catalog',
+        error: error.runtimeType,
+      );
       _catalogError = error is FormatException
           ? 'Каталог вернул повреждённые данные.'
           : 'Не удалось загрузить каталог.';
@@ -264,8 +264,13 @@ class RadioProvider extends ChangeNotifier {
     try {
       await action();
       if (request == _playbackRequest) _playbackFailure = null;
-    } catch (_) {
+    } catch (error) {
       if (request == _playbackRequest) {
+        developer.log(
+          'Playback command failed for ${pendingId ?? 'stop'}',
+          name: 'radio.playback',
+          error: error.runtimeType,
+        );
         _playbackFailure = (message: message, retry: retry);
       }
     } finally {
@@ -276,18 +281,11 @@ class RadioProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadFavoriteStations() async {
-    try {
+  Future<void> _loadFavoriteStations() {
+    return _queueFavoriteChange(() async {
       final favorites = await _storage.loadFavoriteStations();
-      if (_disposed) return;
-      _favoriteStations = favorites;
-      _favoritesError = null;
-      _publish();
-      print('Загружено ${_favoriteStations.length} избранных станций');
-    } catch (e) {
-      print('Ошибка загрузки избранных станций: $e');
-      _favoriteStations = [];
-    }
+      if (!_disposed) _favoriteStations = favorites;
+    });
   }
 
   void _setLoading(bool loading) {

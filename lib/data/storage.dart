@@ -30,14 +30,17 @@ class StorageService {
     return favorites.values.whereType<RadioStation>().toList();
   }
 
-  Future<void> saveFavoriteStations(List<RadioStation> stations) async {
+  Future<List<RadioStation>> toggleFavorite(RadioStation station) async {
     final prefs = await SharedPreferences.getInstance();
     final stored = await _read(prefs);
-    await _write(prefs, {
-      for (final entry in stored.entries)
-        if (entry.value == null) entry.key: null,
-      for (final station in stations) station.stationuuid: station,
-    });
+    final id = station.stationuuid;
+    if (stored[id] == null) {
+      stored[id] = station;
+    } else {
+      stored.remove(id);
+    }
+    await _write(prefs, stored);
+    return stored.values.whereType<RadioStation>().toList();
   }
 
   Future<Map<String, RadioStation?>> _read(SharedPreferences prefs) async {
