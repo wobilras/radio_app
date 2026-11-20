@@ -6,7 +6,7 @@ import 'package:radio_app/presentation/screens/main_screen.dart';
 import 'package:radio_app/providers/radio_provider.dart';
 
 void main() {
-  runApp(MyApp());
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -36,7 +36,7 @@ class MyApp extends StatelessWidget {
           elevatedButtonTheme: ElevatedButtonThemeData(
             style: ElevatedButton.styleFrom(
               elevation: 2,
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -49,7 +49,7 @@ class MyApp extends StatelessWidget {
             ),
           ),
         ),
-        home: MainScreen(),
+        home: const MainScreen(),
         debugShowCheckedModeBanner: false,
       ),
     );

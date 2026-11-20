@@ -31,7 +31,7 @@ void main() {
 
     expect(
       tester.getSemantics(find.text('Популярные')),
-      containsSemantics(isButton: true, isSelected: true),
+      isSemantics(isButton: true, isSelected: true),
     );
     // The search field and both tabs are reached in visual order.
     for (var i = 0; i < 3; i++) {
@@ -44,7 +44,7 @@ void main() {
     expect(selected, TabType.favorites);
     expect(
       tester.getSemantics(find.text('Избранное')),
-      containsSemantics(isButton: true, isSelected: true),
+      isSemantics(isButton: true, isSelected: true),
     );
     semantics.dispose();
   });

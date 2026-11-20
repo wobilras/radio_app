@@ -26,10 +26,10 @@ class RadioStationTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(16.0),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
+            color: Colors.grey.withValues(alpha: 0.2),
             spreadRadius: 1,
             blurRadius: 6,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -92,13 +92,13 @@ class RadioStationTile extends StatelessWidget {
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.vertical(
+                  borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(16.0),
                   ),
                   color: Colors.grey[300],
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.vertical(
+                  borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(16.0),
                   ),
                   child: _buildStationImage(),
@@ -108,8 +108,8 @@ class RadioStationTile extends StatelessWidget {
                 Positioned.fill(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.3),
-                      borderRadius: BorderRadius.vertical(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(16.0),
                       ),
                     ),
@@ -121,7 +121,11 @@ class RadioStationTile extends StatelessWidget {
                           color: Colors.red[400],
                           borderRadius: BorderRadius.circular(25),
                         ),
-                        child: Icon(Icons.stop, color: Colors.white, size: 30),
+                        child: const Icon(
+                          Icons.stop,
+                          color: Colors.white,
+                          size: 30,
+                        ),
                       ),
                     ),
                   ),
@@ -132,14 +136,17 @@ class RadioStationTile extends StatelessWidget {
                   top: 8,
                   left: 8,
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.7),
+                      color: Colors.black.withValues(alpha: 0.7),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       '${station.bitrate}k',
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 10,
                         fontWeight: FontWeight.w500,
@@ -153,7 +160,7 @@ class RadioStationTile extends StatelessWidget {
         Expanded(
           flex: 2,
           child: Padding(
-            padding: EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(8.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -170,12 +177,12 @@ class RadioStationTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Row(
                   children: [
                     if (station.country.isNotEmpty) ...[
                       Icon(Icons.public, size: 12, color: Colors.grey[600]),
-                      SizedBox(width: 4),
+                      const SizedBox(width: 4),
                       Flexible(
                         child: Text(
                           station.country,
@@ -190,7 +197,7 @@ class RadioStationTile extends StatelessWidget {
                     ],
                   ],
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
                   station.displayInfo,
                   style: TextStyle(
@@ -256,7 +263,7 @@ class RadioStationTile extends StatelessWidget {
             Icon(Icons.radio, size: 32, color: iconColors[colorIndex]),
             if (station.name.length <= 10)
               Padding(
-                padding: EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   station.name.toUpperCase(),
                   style: TextStyle(

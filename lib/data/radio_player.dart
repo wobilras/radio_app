@@ -1,60 +1,79 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:audioplayers/audioplayers.dart';
 
 class AudioPlayerService {
-  AudioPlayerService({AudioPlayer? player}) : _player = player ?? AudioPlayer();
+  AudioPlayerService({AudioPlayer Function()? playerFactory})
+    : _createPlayer = playerFactory ?? AudioPlayer.new {
+    // Plugin exceptions include the full stream URL.
+    AudioLogger.logLevel = AudioLogLevel.none;
+  }
 
-  final AudioPlayer _player;
+  final AudioPlayer Function() _createPlayer;
+  AudioPlayer? _player;
   StreamSubscription<PlayerState>? _stateSubscription;
-  StreamSubscription<String>? _logSubscription;
+  StreamSubscription<AudioEvent>? _eventSubscription;
+  bool _sourceAssigned = false;
   Future<void>? _closing;
   Future<void> _commands = Future.value();
   int _intent = 0;
 
   String? _currentStationId;
-
   final StreamController<String?> _currentStationController =
       StreamController<String?>.broadcast();
 
   Stream<String?> get currentStationStream => _currentStationController.stream;
-
   String? get currentStationId => _currentStationId;
 
   Future<void> initialize() async {
-    if (_stateSubscription != null || _closing != null) return;
+    if (_closing == null) _player ??= _openPlayer();
+  }
 
-    _stateSubscription = _player.onPlayerStateChanged.listen((
-      PlayerState state,
-    ) {
-      print('Состояние плеера изменено: $state');
-      if ((state == PlayerState.stopped || state == PlayerState.completed) &&
-          state == _player.state) {
+  AudioPlayer _openPlayer() {
+    final player = _createPlayer();
+    _stateSubscription = player.onPlayerStateChanged.listen((state) {
+      if (identical(_player, player) &&
+          (state == PlayerState.stopped || state == PlayerState.completed)) {
         _setCurrentStation(null);
       }
     });
-
-    _logSubscription = _player.onLog.listen((String message) {
-      print('AudioPlayer Log: $message');
-    });
-
-    print('Audio Player Service инициализирован успешно');
+    _eventSubscription = player.eventStream.listen(
+      (_) {},
+      onError: (Object error) {
+        if (!identical(_player, player)) return;
+        developer.log(
+          'Audio stream failed',
+          name: 'radio.playback',
+          error: error.runtimeType,
+        );
+        _setCurrentStation(null);
+      },
+    );
+    return player;
   }
 
   Future<bool> playStation(String stationId, String streamUrl) {
     final intent = ++_intent;
     return _enqueue(() async {
       if (!_isCurrent(intent)) return false;
-      await _player.stop();
-      _setCurrentStation(null);
+      if (_sourceAssigned) {
+        _setCurrentStation(null);
+        await _releasePlayer();
+      }
       if (!_isCurrent(intent)) return false;
+
+      final player = _player ??= _openPlayer();
+      _sourceAssigned = true;
       try {
-        await _player.play(UrlSource(streamUrl));
+        await player.setSource(UrlSource(streamUrl));
+        if (!_isCurrent(intent)) return false;
+        await player.resume();
       } catch (_) {
         if (!_isCurrent(intent)) return false;
         rethrow;
       }
-      if (!_isCurrent(intent) || _player.state != PlayerState.playing) {
+      if (!_isCurrent(intent) || player.state != PlayerState.playing) {
         return false;
       }
       _setCurrentStation(stationId);
@@ -66,7 +85,7 @@ class AudioPlayerService {
     final intent = ++_intent;
     return _enqueue(() async {
       if (!_isCurrent(intent)) return;
-      await _player.stop();
+      await _releasePlayer();
       _setCurrentStation(null);
     });
   }
@@ -85,14 +104,23 @@ class AudioPlayerService {
     _currentStationController.add(id);
   }
 
+  Future<void> _releasePlayer() async {
+    final player = _player;
+    _player = null;
+    _sourceAssigned = false;
+    await _stateSubscription?.cancel();
+    await _eventSubscription?.cancel();
+    _stateSubscription = null;
+    _eventSubscription = null;
+    await player?.dispose();
+  }
+
   Future<void> dispose() => _closing ??= _dispose();
 
   Future<void> _dispose() async {
     await _commands;
-    await _stateSubscription?.cancel();
-    await _logSubscription?.cancel();
     try {
-      await _player.dispose();
+      await _releasePlayer();
     } finally {
       await _currentStationController.close();
     }

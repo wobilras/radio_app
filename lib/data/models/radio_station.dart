@@ -43,8 +43,9 @@ class RadioStation {
       final uri = Uri.tryParse(text(key));
       if (uri == null ||
           !{'http', 'https'}.contains(uri.scheme) ||
-          uri.host.isEmpty)
+          uri.host.isEmpty) {
         return null;
+      }
       return uri.toString();
     }
 
@@ -87,7 +88,7 @@ class RadioStation {
 
   String get displayInfo {
     if (bitrate > 0) {
-      return '${bitrate} kbps';
+      return '$bitrate kbps';
     }
     if (codec.isNotEmpty) {
       return codec.toUpperCase();

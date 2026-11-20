@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 
@@ -44,7 +45,12 @@ class RadioRepositoryImpl implements RadioRepository {
   Future<List<RadioStation>> getRadioStations() async {
     try {
       return await _browserService.getPopularStations(limit: 100);
-    } on http.ClientException {
+    } on http.ClientException catch (error) {
+      developer.log(
+        'Using fallback stations',
+        name: 'radio.catalog',
+        error: error.runtimeType,
+      );
       return _getFallbackStations();
     }
   }
@@ -55,31 +61,15 @@ class RadioRepositoryImpl implements RadioRepository {
 
   @override
   Future<void> playStation(RadioStation station) async {
-    try {
-      final started = await _audioService.playStation(
-        station.stationuuid,
-        station.url,
-      );
-
-      if (started && !station.stationuuid.startsWith('fallback-')) {
-        unawaited(_browserService.registerStationClick(station.stationuuid));
-      }
-    } catch (e) {
-      print('Ошибка воспроизведения станции: $e');
-      rethrow;
+    final id = station.stationuuid;
+    final started = await _audioService.playStation(id, station.url);
+    if (started && !id.startsWith('fallback-')) {
+      unawaited(_browserService.registerStationClick(id));
     }
   }
 
   @override
-  Future<void> stopStation() async {
-    try {
-      await _audioService.stop();
-      print('Воспроизведение остановлено');
-    } catch (e) {
-      print('Ошибка остановки воспроизведения: $e');
-      rethrow;
-    }
-  }
+  Future<void> stopStation() => _audioService.stop();
 
   @override
   Future<void> refreshServers() async {
@@ -135,7 +125,11 @@ class RadioRepositoryImpl implements RadioRepository {
   void dispose() {
     unawaited(
       _audioService.dispose().catchError((Object error) {
-        print('Ошибка освобождения плеера: $error');
+        developer.log(
+          'Player disposal failed',
+          name: 'radio.playback',
+          error: error.runtimeType,
+        );
       }),
     );
     _browserService.dispose();
