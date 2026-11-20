@@ -109,14 +109,6 @@ class RadioBrowserService {
     },
   );
 
-  Future<List<RadioStation>> getStationsByCountry(
-    String countryCode, {
-    int limit = 50,
-  }) => _stations(
-    ['json', 'stations', 'bycountrycodeexact', countryCode],
-    {'limit': '$limit'},
-  );
-
   Future<void> registerStationClick(String stationUuid) async {
     try {
       await _request(['json', 'url', stationUuid], maxAttempts: 1);

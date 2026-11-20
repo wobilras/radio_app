@@ -21,7 +21,7 @@ class RecordingAudio extends Fake implements AudioPlayerService {
   final played = <String>[];
 
   @override
-  Future<bool> playStation(String id, String name, String url) async {
+  Future<bool> playStation(String id, String url) async {
     played.add(id);
     return true;
   }
@@ -47,7 +47,13 @@ void main() {
       expect(audio.played, ['catalog']);
       expect(browser.clicked, ['catalog']);
 
-      await repository.playStation(station.copyWith(stationuuid: 'fallback-1'));
+      await repository.playStation(
+        RadioStation(
+          stationuuid: 'fallback-1',
+          name: station.name,
+          url: station.url,
+        ),
+      );
       expect(audio.played, ['catalog', 'fallback-1']);
       expect(browser.clicked, ['catalog']);
       browser.completion.complete();

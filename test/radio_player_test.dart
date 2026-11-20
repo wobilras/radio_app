@@ -8,6 +8,7 @@ class FakeAudioPlayer extends Fake implements AudioPlayer {
   final states = StreamController<PlayerState>.broadcast();
   final logs = StreamController<String>.broadcast();
   bool disposed = false;
+  int stateSubscriptions = 0;
   final played = <String>[];
   final started = Completer<void>();
   Completer<void>? playGate;
@@ -40,7 +41,10 @@ class FakeAudioPlayer extends Fake implements AudioPlayer {
   Future<void> stop() async => emit(PlayerState.stopped);
 
   @override
-  Stream<PlayerState> get onPlayerStateChanged => states.stream;
+  Stream<PlayerState> get onPlayerStateChanged {
+    stateSubscriptions++;
+    return states.stream;
+  }
 
   @override
   Stream<String> get onLog => logs.stream;
@@ -60,13 +64,9 @@ void main() {
     for (var i = 0; i < 2; i++) {
       final player = FakeAudioPlayer();
       final service = AudioPlayerService(player: player);
-      final received = <PlayerState>[];
-      service.stateStream.listen(received.add);
       await service.initialize();
       await service.initialize();
-      player.states.add(PlayerState.playing);
-      await Future<void>.delayed(Duration.zero);
-      expect(received, [PlayerState.playing]);
+      expect(player.stateSubscriptions, 1);
       await service.dispose();
       expect(player.disposed, isTrue);
     }
@@ -80,7 +80,7 @@ void main() {
       await service.initialize();
       final ids = <String?>[];
       service.currentStationStream.listen(ids.add);
-      final play = service.playStation('a', 'A', 'https://example.test/a');
+      final play = service.playStation('a', 'https://example.test/a');
       await player.started.future;
       final stop = service.stop();
       player.playGate!.complete();
@@ -97,8 +97,8 @@ void main() {
     final service = AudioPlayerService(player: player);
     await service.initialize();
     await Future.wait([
-      service.playStation('a', 'A', 'https://example.test/a'),
-      service.playStation('b', 'B', 'https://example.test/b'),
+      service.playStation('a', 'https://example.test/a'),
+      service.playStation('b', 'https://example.test/b'),
     ]);
     expect(player.played, ['https://example.test/b']);
     expect(service.currentStationId, 'b');

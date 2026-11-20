@@ -21,7 +21,10 @@ class MainScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<RadioProvider>(context);
+    final provider = context.read<RadioProvider>();
+    final currentTab = context.select(
+      (RadioProvider provider) => provider.currentTab,
+    );
     return Scaffold(
       appBar: PreferredSize(
         preferredSize: Size.fromHeight(
@@ -30,7 +33,7 @@ class MainScreen extends StatelessWidget {
                   3.5,
         ),
         child: MainAppBar(
-          currentTab: provider.currentTab,
+          currentTab: currentTab,
           onTabChanged: provider.setCurrentTab,
           searchController: provider.searchController,
           onSearchClear: provider.clearSearch,

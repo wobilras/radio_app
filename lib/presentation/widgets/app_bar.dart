@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../providers/radio_provider.dart';
 
-class MainAppBar extends StatefulWidget implements PreferredSizeWidget {
+class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   final TabType currentTab;
-  final Function(TabType) onTabChanged;
+  final ValueChanged<TabType> onTabChanged;
   final TextEditingController searchController;
   final VoidCallback? onSearchClear;
 
@@ -17,28 +17,7 @@ class MainAppBar extends StatefulWidget implements PreferredSizeWidget {
   });
 
   @override
-  State<MainAppBar> createState() => _MainAppBarState();
-
-  @override
-  Size get preferredSize => Size.fromHeight(160.0);
-}
-
-class _MainAppBarState extends State<MainAppBar> {
-  @override
-  void initState() {
-    super.initState();
-    widget.searchController.addListener(_onSearchChanged);
-  }
-
-  @override
-  void dispose() {
-    widget.searchController.removeListener(_onSearchChanged);
-    super.dispose();
-  }
-
-  void _onSearchChanged() {
-    setState(() {});
-  }
+  Size get preferredSize => const Size.fromHeight(160);
 
   @override
   Widget build(BuildContext context) {
@@ -77,34 +56,40 @@ class _MainAppBarState extends State<MainAppBar> {
                     ),
                   ],
                 ),
-                child: TextField(
-                  controller: widget.searchController,
-                  enabled: widget.currentTab == TabType.stations,
-                  decoration: InputDecoration(
-                    hintText: 'Поиск радиостанций...',
-                    hintStyle: TextStyle(color: Colors.grey[500], fontSize: 16),
-                    prefixIcon: Icon(
-                      Icons.search,
-                      color: Colors.grey[600],
-                      size: 24,
+                child: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: searchController,
+                  builder: (context, value, _) => TextField(
+                    controller: searchController,
+                    enabled: currentTab == TabType.stations,
+                    decoration: InputDecoration(
+                      hintText: 'Поиск радиостанций...',
+                      hintStyle: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 16,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search,
+                        color: Colors.grey[600],
+                        size: 24,
+                      ),
+                      suffixIcon: value.text.isNotEmpty
+                          ? IconButton(
+                              icon: Icon(
+                                Icons.clear,
+                                color: Colors.grey[600],
+                                size: 20,
+                              ),
+                              onPressed: onSearchClear,
+                            )
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                     ),
-                    suffixIcon: widget.searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: Icon(
-                              Icons.clear,
-                              color: Colors.grey[600],
-                              size: 20,
-                            ),
-                            onPressed: widget.onSearchClear,
-                          )
-                        : null,
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
+                    style: TextStyle(fontSize: 16, color: Colors.grey[800]),
                   ),
-                  style: TextStyle(fontSize: 16, color: Colors.grey[800]),
                 ),
               ),
               SizedBox(height: 16),
@@ -115,8 +100,8 @@ class _MainAppBarState extends State<MainAppBar> {
                     child: _TabButton(
                       title: 'Популярные',
                       icon: Icons.trending_up,
-                      isSelected: widget.currentTab == TabType.stations,
-                      onTap: () => widget.onTabChanged(TabType.stations),
+                      isSelected: currentTab == TabType.stations,
+                      onTap: () => onTabChanged(TabType.stations),
                     ),
                   ),
                   SizedBox(width: 16),
@@ -124,8 +109,8 @@ class _MainAppBarState extends State<MainAppBar> {
                     child: _TabButton(
                       title: 'Избранное',
                       icon: Icons.favorite,
-                      isSelected: widget.currentTab == TabType.favorites,
-                      onTap: () => widget.onTabChanged(TabType.favorites),
+                      isSelected: currentTab == TabType.favorites,
+                      onTap: () => onTabChanged(TabType.favorites),
                     ),
                   ),
                 ],

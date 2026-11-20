@@ -56,10 +56,6 @@ class FakeRadioRepository implements RadioRepository {
   }
 
   @override
-  Future<List<RadioStation>> getStationsByCountry(String countryCode) async =>
-      [];
-
-  @override
   Future<void> refreshServers() async {}
 
   @override

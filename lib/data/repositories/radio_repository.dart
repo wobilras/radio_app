@@ -11,7 +11,6 @@ abstract class RadioRepository {
   void dispose();
   Future<List<RadioStation>> getRadioStations();
   Future<List<RadioStation>> searchStations(String query);
-  Future<List<RadioStation>> getStationsByCountry(String countryCode);
   Future<void> playStation(RadioStation station);
   Future<void> stopStation();
   Future<void> refreshServers();
@@ -55,29 +54,10 @@ class RadioRepositoryImpl implements RadioRepository {
       _browserService.searchStations(name: query, limit: 50);
 
   @override
-  Future<List<RadioStation>> getStationsByCountry(String countryCode) async {
-    try {
-      print('Загрузка станций для страны: $countryCode');
-
-      final stations = await _browserService.getStationsByCountry(
-        countryCode,
-        limit: 50,
-      );
-
-      print('Загружено ${stations.length} станций для страны $countryCode');
-      return stations;
-    } catch (e) {
-      print('Ошибка загрузки станций по стране: $e');
-      return [];
-    }
-  }
-
-  @override
   Future<void> playStation(RadioStation station) async {
     try {
       final started = await _audioService.playStation(
         station.stationuuid,
-        station.name,
         station.url,
       );
 

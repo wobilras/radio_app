@@ -11,7 +11,6 @@ class RadioStation {
   final int clickcount;
   final String codec;
   final int bitrate;
-  final bool isPlaying;
 
   RadioStation({
     required this.stationuuid,
@@ -26,7 +25,6 @@ class RadioStation {
     this.clickcount = 0,
     this.codec = '',
     this.bitrate = 0,
-    this.isPlaying = false,
   });
 
   factory RadioStation.fromJson(Map<String, dynamic> json) {
@@ -86,38 +84,6 @@ class RadioStation {
     'codec': codec,
     'bitrate': bitrate,
   };
-
-  RadioStation copyWith({
-    String? stationuuid,
-    String? name,
-    String? url,
-    String? favicon,
-    String? country,
-    String? countrycode,
-    String? language,
-    String? tags,
-    int? votes,
-    int? clickcount,
-    String? codec,
-    int? bitrate,
-    bool? isPlaying,
-  }) {
-    return RadioStation(
-      stationuuid: stationuuid ?? this.stationuuid,
-      name: name ?? this.name,
-      url: url ?? this.url,
-      favicon: favicon ?? this.favicon,
-      country: country ?? this.country,
-      countrycode: countrycode ?? this.countrycode,
-      language: language ?? this.language,
-      tags: tags ?? this.tags,
-      votes: votes ?? this.votes,
-      clickcount: clickcount ?? this.clickcount,
-      codec: codec ?? this.codec,
-      bitrate: bitrate ?? this.bitrate,
-      isPlaying: isPlaying ?? this.isPlaying,
-    );
-  }
 
   String get displayInfo {
     if (bitrate > 0) {
