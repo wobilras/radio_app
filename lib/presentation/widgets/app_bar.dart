@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../providers/radio_provider.dart';
 
 class MainAppBar extends StatefulWidget implements PreferredSizeWidget {
@@ -46,10 +47,7 @@ class _MainAppBarState extends State<MainAppBar> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Colors.blue[700]!,
-            Colors.blue[500]!,
-          ],
+          colors: [Colors.blue[700]!, Colors.blue[500]!],
         ),
         boxShadow: [
           BoxShadow(
@@ -83,10 +81,7 @@ class _MainAppBarState extends State<MainAppBar> {
                   controller: widget.searchController,
                   decoration: InputDecoration(
                     hintText: 'Поиск радиостанций...',
-                    hintStyle: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 16,
-                    ),
+                    hintStyle: TextStyle(color: Colors.grey[500], fontSize: 16),
                     prefixIcon: Icon(
                       Icons.search,
                       color: Colors.grey[600],
@@ -94,13 +89,13 @@ class _MainAppBarState extends State<MainAppBar> {
                     ),
                     suffixIcon: widget.searchController.text.isNotEmpty
                         ? IconButton(
-                      icon: Icon(
-                        Icons.clear,
-                        color: Colors.grey[600],
-                        size: 20,
-                      ),
-                      onPressed: widget.onSearchClear,
-                    )
+                            icon: Icon(
+                              Icons.clear,
+                              color: Colors.grey[600],
+                              size: 20,
+                            ),
+                            onPressed: widget.onSearchClear,
+                          )
                         : null,
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(
@@ -108,10 +103,7 @@ class _MainAppBarState extends State<MainAppBar> {
                       vertical: 12,
                     ),
                   ),
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey[800],
-                  ),
+                  style: TextStyle(fontSize: 16, color: Colors.grey[800]),
                 ),
               ),
               SizedBox(height: 16),
@@ -152,7 +144,6 @@ class _TabButton extends StatelessWidget {
   final VoidCallback onTap;
 
   const _TabButton({
-    super.key,
     required this.title,
     required this.icon,
     required this.isSelected,
@@ -161,37 +152,41 @@ class _TabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: isSelected ? Colors.white : Colors.transparent,
-              width: 2,
-            ),
+    final color = isSelected
+        ? Colors.white
+        : Colors.white.withValues(alpha: 0.7);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: isSelected ? Colors.white : Colors.transparent,
+            width: 2,
           ),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
-              size: 20,
-            ),
-            SizedBox(height: 4),
-            Text(
-              title,
-              style: TextStyle(
-                color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      ),
+      child: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          foregroundColor: color,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        ),
+        child: Semantics(
+          selected: isSelected,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 20),
+              const SizedBox(height: 4),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

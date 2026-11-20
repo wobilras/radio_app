@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../data/models/radio_station.dart';
 
 class RadioStationTile extends StatelessWidget {
@@ -34,182 +35,184 @@ class RadioStationTile extends StatelessWidget {
       ),
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16.0),
-          onTap: onTap,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                flex: 3,
-                child: Stack(
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(16.0),
-                        ),
-                        color: Colors.grey[300],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(16.0),
-                        ),
-                        child: _buildStationImage(),
-                      ),
-                    ),
-                    if (isPlaying)
-                      Positioned.fill(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.3),
-                            borderRadius: BorderRadius.vertical(
-                              top: Radius.circular(16.0),
-                            ),
-                          ),
-                          child: Center(
-                            child: Container(
-                              width: 50,
-                              height: 50,
-                              decoration: BoxDecoration(
-                                color: Colors.red[400],
-                                borderRadius: BorderRadius.circular(25),
-                              ),
-                              child: Icon(
-                                Icons.stop,
-                                color: Colors.white,
-                                size: 30,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    // Индикатор качества
-                    if (station.bitrate > 0)
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Container(
-                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.7),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '${station.bitrate}k',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ),
-                    // Кнопка избранного
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.9),
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              spreadRadius: 1,
-                              blurRadius: 3,
-                            ),
-                          ],
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(18),
-                            onTap: onFavoriteToggle,
-                            child: Icon(
-                              isFavorite ? Icons.favorite : Icons.favorite_border,
-                              color: isFavorite ? Colors.red[400] : Colors.grey[600],
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Semantics(
+              container: true,
+              button: true,
+              label: isPlaying
+                  ? 'Остановить ${station.name}'
+                  : 'Воспроизвести ${station.name}',
+              value: [
+                if (isPlaying) 'Воспроизводится',
+                if (station.country.isNotEmpty) station.country,
+                station.displayInfo,
+              ].join(', '),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16.0),
+                onTap: onTap,
+                child: ExcludeSemantics(child: _buildStationContent()),
               ),
-              Expanded(
-                flex: 2,
-                child: Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          station.name,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[800],
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Row(
-                        children: [
-                          if (station.country.isNotEmpty) ...[
-                            Icon(
-                              Icons.public,
-                              size: 12,
-                              color: Colors.grey[600],
-                            ),
-                            SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                station.country,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey[600],
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        station.displayInfo,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.blue[600],
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton.filled(
+                tooltip: isFavorite
+                    ? 'Убрать из избранного ${station.name}'
+                    : 'Добавить в избранное ${station.name}',
+                onPressed: onFavoriteToggle,
+                isSelected: isFavorite,
+                style: IconButton.styleFrom(
+                  foregroundColor: isFavorite
+                      ? Colors.red[700]
+                      : Colors.grey[700],
+                  backgroundColor: Colors.white.withValues(alpha: 0.9),
+                  minimumSize: const Size.square(48),
                 ),
+                icon: const Icon(Icons.favorite_border, size: 20),
+                selectedIcon: const Icon(Icons.favorite, size: 20),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
+  Widget _buildStationContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          flex: 3,
+          child: Stack(
+            children: [
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(16.0),
+                  ),
+                  color: Colors.grey[300],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(16.0),
+                  ),
+                  child: _buildStationImage(),
+                ),
+              ),
+              if (isPlaying)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.3),
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(16.0),
+                      ),
+                    ),
+                    child: Center(
+                      child: Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: Colors.red[400],
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        child: Icon(Icons.stop, color: Colors.white, size: 30),
+                      ),
+                    ),
+                  ),
+                ),
+              // Индикатор качества
+              if (station.bitrate > 0)
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${station.bitrate}k',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          flex: 2,
+          child: Padding(
+            padding: EdgeInsets.all(8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Flexible(
+                  child: Text(
+                    station.name,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Row(
+                  children: [
+                    if (station.country.isNotEmpty) ...[
+                      Icon(Icons.public, size: 12, color: Colors.grey[600]),
+                      SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          station.country,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[600],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                SizedBox(height: 2),
+                Text(
+                  station.displayInfo,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.blue[600],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildStationImage() {
     if (station.favicon.isNotEmpty &&
-        (station.favicon.startsWith('http://') || station.favicon.startsWith('https://'))) {
+        (station.favicon.startsWith('http://') ||
+            station.favicon.startsWith('https://'))) {
       return Image.network(
         station.favicon,
         fit: BoxFit.cover,
@@ -250,11 +253,7 @@ class RadioStationTile extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.radio,
-              size: 32,
-              color: iconColors[colorIndex],
-            ),
+            Icon(Icons.radio, size: 32, color: iconColors[colorIndex]),
             if (station.name.length <= 10)
               Padding(
                 padding: EdgeInsets.only(top: 4),
