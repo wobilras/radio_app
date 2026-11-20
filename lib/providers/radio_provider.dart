@@ -15,6 +15,7 @@ class RadioProvider extends ChangeNotifier {
   List<RadioStation> _favoriteStations = [];
   Future<void> _favoriteChanges = Future.value();
   List<RadioStation> _searchResults = [];
+  bool _disposed = false;
   bool _isLoading = false;
   bool _isSearching = false;
   String? _currentPlayingId;
@@ -57,21 +58,31 @@ class RadioProvider extends ChangeNotifier {
     required StorageService storage,
   })  : _repository = repository,
         _storage = storage {
-    _initialize();
+    _searchController.addListener(_onSearchChanged);
+    _currentPlayingId = _repository.currentStationId;
+    _currentStationSubscription =
+        _repository.currentStationStream.listen((stationId) {
+      if (_disposed || _currentPlayingId == stationId) return;
+      _currentPlayingId = stationId;
+      _publish();
+    });
+    unawaited(_initialize());
   }
 
   Future<void> _initialize() async {
-    await _repository.initialize();
-    _currentStationSubscription =
-        _repository.currentStationStream.listen((stationId) {
-      if (_currentPlayingId != stationId) {
-        _currentPlayingId = stationId;
-        notifyListeners();
-      }
-    });
-    await _loadFavoriteStations();
-    await loadStations();
-    _searchController.addListener(_onSearchChanged);
+    try {
+      await _repository.initialize();
+      if (_disposed) return;
+      await _loadFavoriteStations();
+      if (_disposed) return;
+      await loadStations();
+    } catch (_) {
+      _setError('Не удалось запустить радио.');
+    }
+  }
+
+  void _publish() {
+    if (!_disposed) notifyListeners();
   }
 
   void _onSearchChanged() {
@@ -85,7 +96,7 @@ class RadioProvider extends ChangeNotifier {
       if (query.isEmpty) {
         _searchResults.clear();
         _setSearching(false);
-        notifyListeners();
+        _publish();
       } else {
         _searchDebounceTimer = Timer(Duration(milliseconds: 500), () {
           _performSearch(query);
@@ -98,7 +109,7 @@ class RadioProvider extends ChangeNotifier {
   void setCurrentTab(TabType tab) {
     if (_currentTab != tab) {
       _currentTab = tab;
-      notifyListeners();
+      _publish();
     }
   }
 
@@ -108,7 +119,7 @@ class RadioProvider extends ChangeNotifier {
     _searchQuery = '';
     _searchResults.clear();
     _setSearching(false);
-    notifyListeners();
+    _publish();
   }
 
   Future<void> _performSearch(String query) async {
@@ -123,19 +134,19 @@ class RadioProvider extends ChangeNotifier {
       _setSearching(true);
 
       final results = await _repository.searchStations(query);
-      if (_searchQuery == query) {
+      if (!_disposed && _searchQuery == query) {
         _searchResults = results;
         _setError(null);
         print('Найдено ${results.length} станций по запросу: $query');
       }
     } catch (e) {
-      if (_searchQuery == query) {
+      if (!_disposed && _searchQuery == query) {
         _setError('Ошибка поиска: $e');
         _searchResults.clear();
         print('Ошибка поиска: $e');
       }
     } finally {
-      if (_searchQuery == query) {
+      if (!_disposed && _searchQuery == query) {
         _setSearching(false);
       }
     }
@@ -161,9 +172,10 @@ class RadioProvider extends ChangeNotifier {
 
   Future<void> _queueFavoriteChange(Future<void> Function() change) {
     return _favoriteChanges = _favoriteChanges.then((_) async {
+      if (_disposed) return;
       try {
         await change();
-        notifyListeners();
+        _publish();
       } catch (_) {
         _setError('Не удалось сохранить избранное.');
       }
@@ -176,7 +188,9 @@ class RadioProvider extends ChangeNotifier {
       _setError(null);
 
       print(' Начинаем загрузку станций...');
-      _stations = await _repository.getRadioStations();
+      final stations = await _repository.getRadioStations();
+      if (_disposed) return;
+      _stations = stations;
       if (_stations.isNotEmpty) {
         await _queueFavoriteChange(() async {
           _favoriteStations = await _storage.resolveFavorites(_stations);
@@ -243,28 +257,29 @@ class RadioProvider extends ChangeNotifier {
   }
 
   void _setLoading(bool loading) {
-    if (_isLoading != loading) {
+    if (!_disposed && _isLoading != loading) {
       _isLoading = loading;
-      notifyListeners();
+      _publish();
     }
   }
 
   void _setSearching(bool searching) {
-    if (_isSearching != searching) {
+    if (!_disposed && _isSearching != searching) {
       _isSearching = searching;
-      notifyListeners();
+      _publish();
     }
   }
 
   void _setError(String? error) {
-    if (_error != error) {
+    if (!_disposed && _error != error) {
       _error = error;
-      notifyListeners();
+      _publish();
     }
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _searchDebounceTimer?.cancel();
     _currentStationSubscription?.cancel();
     _searchController.dispose();

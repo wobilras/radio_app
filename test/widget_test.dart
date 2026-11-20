@@ -13,6 +13,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeRadioRepository implements RadioRepository {
   final selected = StreamController<String?>.broadcast();
+  Completer<void>? startup;
+  Completer<List<RadioStation>>? catalog;
   final stations = [
     RadioStation(
         stationuuid: 'one',
@@ -32,10 +34,13 @@ class FakeRadioRepository implements RadioRepository {
   Stream<String?> get currentStationStream => selected.stream;
 
   @override
-  Future<void> initialize() async {}
+  Future<void> initialize() async => startup?.future;
 
   @override
-  Future<List<RadioStation>> getRadioStations() async => stations;
+  Future<List<RadioStation>> getRadioStations() async {
+    final pending = catalog;
+    return pending == null ? stations : await pending.future;
+  }
 
   @override
   Future<List<RadioStation>> searchStations(String query) async =>
@@ -65,6 +70,30 @@ class FakeRadioRepository implements RadioRepository {
 }
 
 void main() {
+  testWidgets('Does not publish or attach listeners after disposal',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final repository = FakeRadioRepository()..startup = Completer<void>();
+    final provider =
+        RadioProvider(repository: repository, storage: StorageService());
+    provider.dispose();
+    repository.startup!.complete();
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+
+    final loadingRepository = FakeRadioRepository()
+      ..catalog = Completer<List<RadioStation>>();
+    final loadingProvider = RadioProvider(
+      repository: loadingRepository,
+      storage: StorageService(),
+    );
+    await tester.pump();
+    expect(loadingProvider.isLoading, isTrue);
+    loadingProvider.dispose();
+    loadingRepository.catalog!.complete(loadingRepository.stations);
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('Loads stations, plays the selected station and saves a favorite',
       (tester) async {
     SharedPreferences.setMockInitialValues({});
