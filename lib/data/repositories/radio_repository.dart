@@ -18,8 +18,14 @@ abstract class RadioRepository {
 }
 
 class RadioRepositoryImpl implements RadioRepository {
-  final RadioBrowserService _browserService = RadioBrowserService();
-  final AudioPlayerService _audioService = AudioPlayerService();
+  RadioRepositoryImpl({
+    RadioBrowserService? browserService,
+    AudioPlayerService? audioService,
+  }) : _browserService = browserService ?? RadioBrowserService(),
+       _audioService = audioService ?? AudioPlayerService();
+
+  final RadioBrowserService _browserService;
+  final AudioPlayerService _audioService;
 
   @override
   Stream<String?> get currentStationStream => _audioService.currentStationStream;
@@ -122,14 +128,15 @@ class RadioRepositoryImpl implements RadioRepository {
   @override
   Future<void> playStation(RadioStation station) async {
     try {
-      await _browserService.registerStationClick(station.stationuuid);
       await _audioService.playStation(
         station.stationuuid,
         station.name,
         station.url,
       );
 
-      print('Станция ${station.name} начала воспроизводиться');
+      if (!station.stationuuid.startsWith('fallback-')) {
+        unawaited(_browserService.registerStationClick(station.stationuuid));
+      }
     } catch (e) {
       print('Ошибка воспроизведения станции: $e');
       rethrow;

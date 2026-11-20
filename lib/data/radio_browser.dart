@@ -88,7 +88,7 @@ class RadioBrowserService {
     print('Список серверов рандомизирован: ${_servers.length} серверов');
   }
 
-  Future<http.Response> _makeRequest(String endpoint, {Map<String, String>? queryParams}) async {
+  Future<http.Response> _makeRequest(String endpoint, {Map<String, String>? queryParams, int maxAttempts = 5}) async {
     String queryString = '';
     if (queryParams != null && queryParams.isNotEmpty) {
       queryString = '?' + queryParams.entries
@@ -97,7 +97,7 @@ class RadioBrowserService {
     }
 
     List<String> serversToTry = List.from(_servers);
-    int maxRetries = min(serversToTry.length, 5);
+    int maxRetries = min(serversToTry.length, maxAttempts);
 
     for (int i = 0; i < maxRetries; i++) {
       String server = serversToTry[i];
@@ -263,7 +263,7 @@ class RadioBrowserService {
 
   Future<void> registerStationClick(String stationUuid) async {
     try {
-      await _makeRequest('/json/url/$stationUuid');
+      await _makeRequest('/json/url/$stationUuid', maxAttempts: 1);
       print('Клик по станции зарегистрирован: $stationUuid');
     } catch (e) {
       print('Ошибка регистрации клика: $e');
