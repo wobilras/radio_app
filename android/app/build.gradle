@@ -5,6 +5,14 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+def releaseSigning = [
+    storeFile: providers.environmentVariable("RADIO_RELEASE_STORE_FILE").orNull,
+    storePassword: providers.environmentVariable("RADIO_RELEASE_STORE_PASSWORD").orNull,
+    keyAlias: providers.environmentVariable("RADIO_RELEASE_KEY_ALIAS").orNull,
+    keyPassword: providers.environmentVariable("RADIO_RELEASE_KEY_PASSWORD").orNull
+]
+def hasReleaseSigning = releaseSigning.values().every { it }
+
 android {
     namespace = "com.example.radio_app"
     compileSdk = flutter.compileSdkVersion
@@ -30,15 +38,31 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile = file(releaseSigning.storeFile)
+                storePassword = releaseSigning.storePassword
+                keyAlias = releaseSigning.keyAlias
+                keyPassword = releaseSigning.keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            signingConfig = signingConfigs.release
         }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+gradle.taskGraph.whenReady { graph ->
+    def releaseTasks = ["assembleRelease", "bundleRelease", "packageRelease", "packageReleaseBundle"]
+    if (!hasReleaseSigning && releaseTasks.any { graph.hasTask(":app:${it}") }) {
+        throw new GradleException("Set RADIO_RELEASE_STORE_FILE, RADIO_RELEASE_STORE_PASSWORD, RADIO_RELEASE_KEY_ALIAS and RADIO_RELEASE_KEY_PASSWORD to sign the Android release.")
+    }
 }
