@@ -7,6 +7,7 @@ import 'package:radio_app/data/models/radio_station.dart';
 import 'package:radio_app/data/repositories/radio_repository.dart';
 import 'package:radio_app/data/storage.dart';
 import 'package:radio_app/presentation/screens/main_screen.dart';
+import 'package:radio_app/presentation/widgets/mini_player.dart';
 import 'package:radio_app/presentation/widgets/radio_station_tile.dart';
 import 'package:radio_app/providers/radio_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -94,6 +95,52 @@ class FirstReadFailsStorage extends StorageService {
 }
 
 void main() {
+  testWidgets('Mini player favorite stays separated from playback', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.binding.setSurfaceSize(const Size(320, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const name = 'A very long radio station name that does not fit on a phone';
+    final repository = FakeRadioRepository()
+      ..stations[0] = RadioStation(
+        stationuuid: 'one',
+        name: name,
+        url: 'https://example.test/one',
+      );
+    await tester.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) =>
+            RadioProvider(repository: repository, storage: StorageService()),
+        child: const MaterialApp(home: MainScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(name));
+    await tester.pumpAndSettle();
+    final player = find.byType(MiniPlayer);
+    Finder favorite(String action) =>
+        find.descendant(of: player, matching: find.byTooltip('$action $name'));
+    final add = favorite('Добавить в избранное');
+    final pause = find.descendant(
+      of: player,
+      matching: find.byTooltip('Пауза'),
+    );
+    expect(
+      tester.getRect(pause).left - tester.getRect(add).right,
+      greaterThanOrEqualTo(24),
+    );
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    expect(favorite('Убрать из избранного'), findsOneWidget);
+    expect((await StorageService().loadFavoriteStations()).single.name, name);
+    await tester.tap(favorite('Убрать из избранного'));
+    await tester.pumpAndSettle();
+    expect(add, findsOneWidget);
+    await tester.tap(pause);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Продолжить'), findsOneWidget);
+  });
   testWidgets('Expanded player retries through its playback button', (
     tester,
   ) async {

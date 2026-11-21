@@ -73,6 +73,19 @@ class MiniPlayer extends StatelessWidget {
                           ),
                         ),
                       ),
+                      IconButton(
+                        tooltip: radio.isFavorite(station.stationuuid)
+                            ? 'Убрать из избранного ${station.name}'
+                            : 'Добавить в избранное ${station.name}',
+                        onPressed: () => radio.toggleFavorite(station),
+                        isSelected: radio.isFavorite(station.stationuuid),
+                        icon: const Icon(Icons.favorite_border),
+                        selectedIcon: Icon(
+                          Icons.favorite,
+                          color: Colors.red[700],
+                        ),
+                      ),
+                      const SizedBox(width: 24),
                       _PlaybackButton(radio: radio),
                       const SizedBox(width: 8),
                     ],
