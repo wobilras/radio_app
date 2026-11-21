@@ -7,6 +7,32 @@ import 'package:radio_app/presentation/widgets/radio_station_tile.dart';
 import 'package:radio_app/providers/radio_provider.dart';
 
 void main() {
+  testWidgets('Search requests focus on pointer down', (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          appBar: MainAppBar(
+            currentTab: TabType.stations,
+            onTabChanged: (_) {},
+            searchController: controller,
+          ),
+        ),
+      ),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(TextField)),
+    );
+    await tester.pump();
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isTrue,
+    );
+    await gesture.up();
+  });
+
   testWidgets('Tabs expose selection and respond to the keyboard', (
     tester,
   ) async {
