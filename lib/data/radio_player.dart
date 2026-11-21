@@ -90,6 +90,22 @@ class AudioPlayerService {
     });
   }
 
+  Future<void> pauseStation(String stationId) {
+    final intent = ++_intent;
+    return _enqueue(() async {
+      if (!_isCurrent(intent) || _currentStationId != stationId) return;
+      await _player?.pause();
+    });
+  }
+
+  Future<void> resumeStation(String stationId) {
+    final intent = ++_intent;
+    return _enqueue(() async {
+      if (!_isCurrent(intent) || _currentStationId != stationId) return;
+      await _player?.resume();
+    });
+  }
+
   bool _isCurrent(int intent) => _closing == null && _intent == intent;
 
   Future<T> _enqueue<T>(Future<T> Function() command) {

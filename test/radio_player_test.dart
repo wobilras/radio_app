@@ -47,6 +47,9 @@ class FakeAudioPlayer extends Fake implements AudioPlayer {
   Future<void> stop() async => emit(PlayerState.stopped);
 
   @override
+  Future<void> pause() async => emit(PlayerState.paused);
+
+  @override
   Stream<PlayerState> get onPlayerStateChanged {
     stateSubscriptions++;
     return states.stream;
@@ -69,6 +72,19 @@ class FakeAudioPlayer extends Fake implements AudioPlayer {
 }
 
 void main() {
+  test('pause and resume retain the current source', () async {
+    final player = FakeAudioPlayer();
+    final service = AudioPlayerService(playerFactory: () => player);
+    await service.initialize();
+    await service.playStation('a', 'https://example.test/a');
+    await service.pauseStation('a');
+    expect(player.state, PlayerState.paused);
+    expect(service.currentStationId, 'a');
+    await service.resumeStation('a');
+    expect(player.state, PlayerState.playing);
+    expect(player.played, ['https://example.test/a']);
+    await service.dispose();
+  });
   test('each service owns its player and subscribes once', () async {
     for (var i = 0; i < 2; i++) {
       final player = FakeAudioPlayer();

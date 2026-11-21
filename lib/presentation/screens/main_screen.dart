@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../providers/radio_provider.dart';
 import '../widgets/app_bar.dart';
 import '../widgets/radio_station_tile.dart';
+import '../widgets/mini_player.dart';
 
 class MainScreen extends StatelessWidget {
   const MainScreen({super.key});
@@ -26,6 +27,8 @@ class MainScreen extends StatelessWidget {
       (RadioProvider provider) => provider.currentTab,
     );
     return Scaffold(
+      extendBody: true,
+      bottomNavigationBar: const MiniPlayer(),
       appBar: PreferredSize(
         preferredSize: Size.fromHeight(
           160 +
@@ -49,7 +52,6 @@ class MainScreen extends StatelessWidget {
     final stations = provider.filteredStations;
     final catalogError = provider.catalogError;
     final favoritesError = provider.favoritesError;
-    final playback = provider.playbackFailure;
     final loading = provider.isLoading || provider.isSearching;
     return RefreshIndicator(
       onRefresh: provider.reloadActive,
@@ -65,13 +67,6 @@ class MainScreen extends StatelessWidget {
             ),
           if (favoritesError != null)
             SliverToBoxAdapter(child: _StatusMessage(message: favoritesError)),
-          if (playback != null)
-            SliverToBoxAdapter(
-              child: _StatusMessage(
-                message: playback.message,
-                onRetry: playback.retry,
-              ),
-            ),
           if (loading)
             SliverFillRemaining(
               hasScrollBody: false,
@@ -123,6 +118,9 @@ class MainScreen extends StatelessWidget {
                 },
               ),
             ),
+          SliverToBoxAdapter(
+            child: SizedBox(height: MediaQuery.paddingOf(context).bottom),
+          ),
         ],
       ),
     );

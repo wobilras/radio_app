@@ -12,6 +12,11 @@ import 'package:radio_app/providers/radio_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeRadioRepository implements RadioRepository {
+  @override
+  Future<void> pauseStation(String stationId) async {}
+
+  @override
+  Future<void> resumeStation(String stationId) async {}
   final selected = StreamController<String?>.broadcast();
   Completer<void>? startup;
   Completer<List<RadioStation>>? catalog;
@@ -89,6 +94,114 @@ class FirstReadFailsStorage extends StorageService {
 }
 
 void main() {
+  testWidgets('Expanded player retries through its playback button', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    var attempts = 0;
+    final repository = FakeRadioRepository()
+      ..onPlay = (_) async {
+        if (++attempts < 3) throw StateError('offline');
+      };
+    await tester.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) =>
+            RadioProvider(repository: repository, storage: StorageService()),
+        child: const MaterialApp(home: MainScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Station One'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Station One').last);
+    await tester.pumpAndSettle();
+    final sheet = find.byType(BottomSheet);
+    final retry = find.descendant(
+      of: sheet,
+      matching: find.byTooltip('Повторить воспроизведение'),
+    );
+    expect(retry, findsOneWidget);
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+    expect(attempts, 2);
+    expect(
+      find.descendant(
+        of: sheet,
+        matching: find.text('Не удалось воспроизвести станцию.'),
+      ),
+      findsOneWidget,
+    );
+    expect(retry, findsOneWidget);
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+    expect(attempts, 3);
+    expect(
+      find.descendant(
+        of: sheet,
+        matching: find.text('Не удалось воспроизвести станцию.'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.byTooltip('Пауза')),
+      findsOneWidget,
+    );
+  });
+  testWidgets('Playback errors remain in mini player and retry succeeds', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    var attempts = 0;
+    final repository = FakeRadioRepository()
+      ..onPlay = (_) async {
+        if (++attempts == 1) throw StateError('offline');
+      };
+    await tester.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) =>
+            RadioProvider(repository: repository, storage: StorageService()),
+        child: const MaterialApp(home: MainScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Station One'));
+    await tester.pumpAndSettle();
+    expect(find.text('Не удалось воспроизвести станцию.'), findsOneWidget);
+    expect(find.byTooltip('Повторить воспроизведение'), findsOneWidget);
+    await tester.tap(find.byTooltip('Повторить воспроизведение'));
+    await tester.pumpAndSettle();
+    expect(attempts, 2);
+    expect(find.text('Не удалось воспроизвести станцию.'), findsNothing);
+    expect(find.byTooltip('Пауза'), findsOneWidget);
+  });
+  testWidgets('Mini player pauses and opens the station sheet', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final repository = FakeRadioRepository();
+    await tester.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) =>
+            RadioProvider(repository: repository, storage: StorageService()),
+        child: const MaterialApp(home: MainScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Пауза'), findsNothing);
+    await tester.tap(find.text('Station One'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Пауза'), findsOneWidget);
+    await tester.tap(find.byTooltip('Пауза'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Продолжить'), findsOneWidget);
+    await tester.tap(find.text('Station One').last);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Закрыть'), findsOneWidget);
+    await tester.tap(find.byTooltip('Продолжить').last);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Пауза'), findsWidgets);
+    await tester.tap(find.byTooltip('Закрыть'));
+    await tester.pumpAndSettle();
+    expect(repository.currentStationId, 'one');
+  });
   testWidgets('Does not publish or attach listeners after disposal', (
     tester,
   ) async {
@@ -153,7 +266,7 @@ void main() {
       await tester.tap(find.text('Избранное'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Station Two'), findsOneWidget);
+      expect(find.text('Station Two'), findsNWidgets(2));
       expect(find.text('Station One'), findsNothing);
       expect((await storage.loadFavoriteStations()).single.stationuuid, 'two');
     },

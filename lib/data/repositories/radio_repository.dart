@@ -14,6 +14,8 @@ abstract class RadioRepository {
   Future<List<RadioStation>> searchStations(String query);
   Future<void> playStation(RadioStation station);
   Future<void> stopStation();
+  Future<void> pauseStation(String stationId);
+  Future<void> resumeStation(String stationId);
   Future<void> refreshServers();
   Stream<String?> get currentStationStream;
   String? get currentStationId;
@@ -70,6 +72,14 @@ class RadioRepositoryImpl implements RadioRepository {
 
   @override
   Future<void> stopStation() => _audioService.stop();
+
+  @override
+  Future<void> pauseStation(String stationId) =>
+      _audioService.pauseStation(stationId);
+
+  @override
+  Future<void> resumeStation(String stationId) =>
+      _audioService.resumeStation(stationId);
 
   @override
   Future<void> refreshServers() async {

@@ -22,6 +22,9 @@ class RadioProvider extends ChangeNotifier {
   Future<void>? _catalogLoad;
   bool _isSearching = false;
   String? _currentPlayingId;
+  RadioStation? _currentStation;
+  bool _paused = false;
+  bool _playbackBusy = false;
   String? _pendingPlaybackId;
   int _playbackRequest = 0;
   String? _catalogError;
@@ -42,7 +45,10 @@ class RadioProvider extends ChangeNotifier {
   bool get isLoading =>
       _currentTab == TabType.stations && _searchQuery.isEmpty && _isLoading;
   bool get isSearching => _isSearching;
-  String? get currentPlayingId => _currentPlayingId;
+  String? get currentPlayingId => _paused ? null : _currentPlayingId;
+  RadioStation? get currentStation => _currentStation;
+  bool get isPaused => _paused;
+  bool get playbackBusy => _playbackBusy || _pendingPlaybackId != null;
   String? get catalogError => _currentTab == TabType.favorites
       ? null
       : (_searchQuery.isEmpty ? _catalogError : _searchError);
@@ -71,6 +77,10 @@ class RadioProvider extends ChangeNotifier {
     ) {
       if (_disposed || _currentPlayingId == stationId) return;
       _currentPlayingId = stationId;
+      if (stationId == null && _pendingPlaybackId == null) {
+        _currentStation = null;
+        _paused = false;
+      }
       _publish();
     });
     unawaited(_initialize());
@@ -229,19 +239,58 @@ class RadioProvider extends ChangeNotifier {
   }
 
   Future<void> playStation(RadioStation station) {
+    if (_paused && _currentStation?.stationuuid == station.stationuuid) {
+      return togglePlayback();
+    }
     if ((_pendingPlaybackId ?? _currentPlayingId) == station.stationuuid) {
       return stopCurrentStation();
+    }
+    if (_currentStation?.stationuuid != station.stationuuid) {
+      _playbackFailure = null;
     }
     return _startPlayback(station);
   }
 
   Future<void> _startPlayback(RadioStation station) {
+    _currentStation = station;
+    _paused = false;
+    _publish();
     return _runPlayback(
       station.stationuuid,
       () => _repository.playStation(station),
       'Не удалось воспроизвести станцию.',
       () => _startPlayback(station),
     );
+  }
+
+  Future<void> togglePlayback() async {
+    final station = _currentStation;
+    if (station == null || _playbackBusy || _pendingPlaybackId != null) return;
+    final request = ++_playbackRequest;
+    final wasPaused = _paused;
+    _playbackBusy = true;
+    _publish();
+    try {
+      if (wasPaused) {
+        await _repository.resumeStation(station.stationuuid);
+      } else {
+        await _repository.pauseStation(station.stationuuid);
+      }
+      if (request == _playbackRequest && _currentStation == station) {
+        _paused = !wasPaused;
+        _playbackFailure = null;
+      }
+    } catch (_) {
+      if (request == _playbackRequest) {
+        _playbackFailure = (
+          message: 'Не удалось изменить воспроизведение.',
+          retry: togglePlayback,
+        );
+      }
+    } finally {
+      if (request == _playbackRequest) _playbackBusy = false;
+      _publish();
+    }
   }
 
   Future<void> stopCurrentStation() {
@@ -260,10 +309,17 @@ class RadioProvider extends ChangeNotifier {
     Future<void> Function() retry,
   ) async {
     final request = ++_playbackRequest;
+    _playbackBusy = false;
     _pendingPlaybackId = pendingId;
     try {
       await action();
-      if (request == _playbackRequest) _playbackFailure = null;
+      if (request == _playbackRequest) {
+        _playbackFailure = null;
+        if (pendingId == null) {
+          _currentStation = null;
+          _paused = false;
+        }
+      }
     } catch (error) {
       if (request == _playbackRequest) {
         developer.log(
