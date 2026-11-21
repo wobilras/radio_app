@@ -95,6 +95,38 @@ class FirstReadFailsStorage extends StorageService {
 }
 
 void main() {
+  testWidgets('Expanded player toggles the current favorite', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) => RadioProvider(
+          repository: FakeRadioRepository(),
+          storage: StorageService(),
+        ),
+        child: const MaterialApp(home: MainScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Station One'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Station One').last);
+    await tester.pumpAndSettle();
+    final sheet = find.byType(BottomSheet);
+    Finder button(String label) => find.descendant(
+      of: sheet,
+      matching: find.byTooltip('$label Station One'),
+    );
+    await tester.tap(button('Добавить в избранное'));
+    await tester.pumpAndSettle();
+    expect(button('Убрать из избранного'), findsOneWidget);
+    expect(
+      (await StorageService().loadFavoriteStations()).single.name,
+      'Station One',
+    );
+    await tester.tap(button('Убрать из избранного'));
+    await tester.pumpAndSettle();
+    expect(button('Добавить в избранное'), findsOneWidget);
+  });
   testWidgets('Mini player favorite stays separated from playback', (
     tester,
   ) async {
